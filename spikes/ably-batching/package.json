@@ -1,0 +1,18 @@
+{
+  "name": "ably-quiz-spike-batching",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "S1.3 empirical check: do per-message server timestamps survive server-side batching? (BRIEF §B2.1 VERIFY).",
+  "scripts": {
+    "batch-test": "tsx batch-timestamps.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ably": "^2.0.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.0"
+  }
+}
