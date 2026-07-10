@@ -15,7 +15,7 @@
 - [x] S1.1 pnpm monorepo scaffold
 - [x] S1.2 lint/format/test + CI + CONTRIBUTING.md
 - [x] S1.3 Ably app setup (persistence, batching on answers namespace + timestamp VERIFY, AIT appends rule) + docs/ABLY-SETUP.md + limits notes
-- [ ] S1.4 /api/ably-auth JWT + capability matrix + tests
+- [x] S1.4 /api/ably-auth JWT + capability matrix + tests
 - [ ] **GATE: CI green; two tabs pub/sub via issued JWTs**
 
 ## S2 — Core engine
