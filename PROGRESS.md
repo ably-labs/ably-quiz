@@ -3,9 +3,11 @@
 > Maintained by the build agent. Check tasks off as they land (task IDs match BRIEF.md Part B §B3). Record deviations and blockers here — never diverge silently.
 
 ## S0 — Latency spike (GO/NO-GO)
-- [ ] S0.1 spike script (providers with available keys; skip + record missing — day 0: Anthropic only)
-- [ ] S0.2 RESULTS.md with verdict (GO/window recommendation)
-- [ ] **GATE: GO verdict committed**
+- [x] S0.1 spike script (providers with available keys; skip + record missing — day 0: Anthropic only)
+- [x] S0.2 RESULTS.md with verdict (GO/window recommendation)
+- [x] **GATE: GO verdict committed**
+
+**Stage note (S0 complete):** `spikes/latency/` is a standalone TS package (no app code, no Ably key). Ran the Anthropic roster (Opus 4.8 / Sonnet 5 / Fable 5), 3 runs × 2 variants (bare/with-digest) × 12 questions = 216 calls. OpenAI + xAI skipped (no keys) and recorded; MCP timing skipped (optional, S6). **Verdict: GO, 20s window** — p95 time-to-answer 5.76s, 100% valid-answer rate. Grounding lifts the `ably-internal` band 83% → 100% (the pre-learning meta-game working, per §A3). Full numbers in [spikes/latency/RESULTS.md](spikes/latency/RESULTS.md). Re-run the script as `OPENAI_API_KEY`/`XAI_API_KEY` arrive.
 
 ## S1 — Foundation
 - [ ] S1.1 pnpm monorepo scaffold
@@ -55,7 +57,7 @@
 - [ ] S6.5 open-source pass (Ably Labs)
 
 ## Deviations
-_(none yet)_
+- **S0:** Spike omits the `temperature` param by default — newer Claude models (Opus 4.8 / Sonnet 5 / Fable 5) reject it (`400 … "temperature is deprecated for this model"`). Providers run at their default sampling; still settable via `SPIKE_TEMPERATURE` for providers that accept it. Carry forward to the S4 agent runner. Bumped `maxTokens` 300 → 400 after one truncated no-answer in a smoke run; full run then hit 100% valid-answer rate.
 
 ## Blocked
 _(none yet)_
