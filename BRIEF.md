@@ -90,6 +90,7 @@ You are building this repo from this brief. Work through stages **S0 → S5 in o
 - **Token streaming:** one logical message per response, built by appends (never message-per-token). Status walks `streaming → complete | cancelled` via `extras.ai.codec`. Append rollup compacts high token rates (default cap ~25 msg/s, `appendRollupWindow` 0–500ms).
 - **⚠️ Mandatory app setup:** the **"Message annotations, updates, deletes, and appends"** channel rule MUST be enabled on the namespace(s) carrying AIT sessions — streaming fails without it. Also enable **message persistence** on quiz namespaces (history is our audit log/recovery). One-time, S1.
 - **Presence:** requires `clientId` in auth. Ungraceful disconnect removes a member after ~15s. Fine for lobby-scale (~hundreds); VERIFY presence member limits + per-channel msg/s limits at S1 against `/docs/general/limits`.
+- **Server-side batching** (`/docs/messages/batch.md`, `/docs/pub-sub/guides/data-streaming.md`): a namespace/channel rule (`batchingEnabled` + `batchingInterval` in ms; Control API or `ably apps rules create --batching-enabled`). Ably holds messages published within the interval and delivers them as ONE batch message (≤200 messages per batch; a batch bills/delivers as a single message). Explicitly recommended for bursts, and it "enables a much higher number of users to be present on a channel". Caveats: no idempotency/dedup inside batches; mutually exclusive with conflation. ⚠️ VERIFY at S1: whether each message inside a batch retains its own server timestamp (our fairness clock) — see §B2.1 for the fallback if not.
 - **Vercel Fluid compute:** default-on for new projects. Node runtime, in-function concurrency, error isolation, `waitUntil`. Max duration: 300s default; **800s GA (Pro)**; **1800s beta via per-function `maxDuration`**. Agent host relies on 1800s — VERIFY beta availability on the Ably Vercel team at S4; the lease/restart design below means even 800s works (one mid-quiz handover).
 - Internal reference implementation: `~/Projects/Ably/ai-transport-ai-elements-demo`.
 
@@ -117,7 +118,9 @@ Vercel (Next.js, Fluid compute)                 Ably (the entire backend)
 ### B2.1 Channels & why they're shaped this way
 
 1. **`quiz:{id}` (main)** — control events, lobby presence, LiveObjects. Players: `subscribe` + `presence` only.
-2. **`quiz:{id}:answers` (fan-in)** — answers published here, ONLY the quizmaster subscribes. Rationale: answers on the main channel would fan out N×N (300 players → ~90k deliveries per question); fan-in keeps it at N. Players get publish-only capability here; publisher clients set `echoMessages: false`. With persistence enabled, this channel's history IS the durable answer log (used for recovery and counterfactual scoring).
+2. **`quiz:{id}:answers` (fan-in, server-side batched)** — answers published here, ONLY the quizmaster subscribes. Rationale: answers on the main channel would fan out N×N (300 players → ~90k deliveries per question); fan-in keeps it at N. Additionally enable **server-side batching** on this namespace (`batchingInterval` ~200ms): a 300-answer burst reaches the quizmaster as a handful of batch messages instead of 300 deliveries — burst absorption + cost reduction. Players get publish-only capability here; publisher clients set `echoMessages: false`. With persistence enabled, this channel's history IS the durable answer log (used for recovery and counterfactual scoring).
+   ⚠️ **Timing under batching (VERIFY at S1.3):** if individual messages inside a batch retain their own server timestamps → use them, done. If a batch carries only one timestamp → accept quantization: `elapsedMs` is accurate to ±`batchingInterval` (200ms on a 20s window, uniform for everyone — fair, and worst case we shrink the interval to 100ms or drop batching; the fan-in design alone already avoids the N² problem). Note batching compacts *delivery*, not *inbound publish* — per-channel inbound rate limits still apply; measure at S3.6, shard `:answers:{0..n}` only if numbers demand.
+   **Do NOT enable batching on the main channel** — control events (question broadcast) must not absorb interval delay. If the S3.6 load test shows presence join/leave bursts straining the main channel at 300 players, move presence to a dedicated batched `quiz:{id}:lobby` channel (batching explicitly raises presence capacity) — roster UI happily tolerates 200ms.
 3. **`quiz:{id}:agent:{slug}` (one AIT session per agent)** — the agent's public mind: presence (`joining → idle → thinking → answered`, plus quip/streak data) and **token-streamed thinking** per question. Screens subscribe live; the inspector reads history (rewind/history) for "what was Matt Fable thinking on Q4?". Answers do NOT go here — agents answer on the fan-in channel like everyone else, same clock, same contract.
 
 ### B2.2 Timing & fairness (the core mechanic)
@@ -234,14 +237,14 @@ ABLY_MCP_URL=  ABLY_MCP_AUTH=…      # S6
 Every task gets its own commit (`<type>(<scope>): <taskId> <summary>`). Every stage ends with a `PROGRESS.md` update. Gates are hard.
 
 ### S0 — Latency spike (GO/NO-GO) — no app code
-- **S0.1** `spikes/latency/`: standalone TS script. 12 sample questions in three bands: general trivia, Ably public docs facts, Ably-internal-flavoured. For each provider (Anthropic Opus/Sonnet/Fable, OpenAI, xAI): the REAL answer format (streamed ≤2-sentence think-aloud → strict JSON), 3 runs each: measure TTFT, time-to-valid-JSON, accuracy; variants bare / with-digest; optional single-MCP-call timing if credentials exist.
+- **S0.1** `spikes/latency/`: standalone TS script. 12 sample questions in three bands: general trivia, Ably public docs facts, Ably-internal-flavoured. For each provider (Anthropic Opus/Sonnet/Fable, OpenAI, xAI): the REAL answer format (streamed ≤2-sentence think-aloud → strict JSON), 3 runs each: measure TTFT, time-to-valid-JSON, accuracy; variants bare / with-digest; optional single-MCP-call timing if credentials exist. **Run only providers whose API keys are present in `.env.local` and skip the rest gracefully, recording skips in RESULTS.md** — day 0 starts with `ANTHROPIC_API_KEY` only (three models is plenty for a verdict); re-run the script as other keys arrive. S0 needs NO Ably key.
 - **S0.2** `spikes/latency/RESULTS.md`: table + **verdict**: p95 time-to-answer ≤10s → GO, 20s window · ≤20s → GO, 30s window · else STOP and flag Matt.
 - **Gate:** GO verdict committed. This also de-risks: provider SDKs, streaming parsing, JSON schema enforcement — the heart of the agent runner, proven on day 0.
 
 ### S1 — Foundation
 - **S1.1** pnpm monorepo: `apps/web` (Next.js App Router, TS, Tailwind), `packages/core`, `packages/agent-runner`, `agents/`, `spikes/`.
 - **S1.2** ESLint flat + Prettier + `vitest` + CI (GitHub Actions: lint/typecheck/test on PR); `CONTRIBUTING.md` (coding standards + commit conventions, distilled from §B0).
-- **S1.3** Ably app setup + `docs/ABLY-SETUP.md`: namespaces `quiz` (persistence ON) and agent-session namespace (persistence + **the AIT appends/annotations rule** ON — streaming fails without it); record channel-limit numbers from `/docs/general/limits` relevant to 300 players.
+- **S1.3** Ably app setup + `docs/ABLY-SETUP.md`: namespaces `quiz` (persistence ON), `quiz-answers` (persistence + **server-side batching** ON, `batchingInterval` 200ms), and agent-session namespace (persistence + **the AIT appends/annotations rule** ON — streaming fails without it). Empirically VERIFY timestamp semantics inside batches (publish 3 spaced messages within one interval, inspect what the subscriber sees) and record the finding + the §B2.1 fallback decision in `docs/ABLY-SETUP.md`. Record channel-limit numbers from `/docs/general/limits` relevant to 300 players (inbound publish rate especially).
 - **S1.4** `/api/ably-auth` JWT with the §B2.5 capability matrix + role tests.
 - **Gate:** CI green; two browser tabs subscribe/publish on a `quiz:dev` channel via issued JWTs.
 
@@ -268,7 +271,12 @@ Every task gets its own commit (`<type>(<scope>): <taskId> <summary>`). Every st
 - **S4.4** Agent host: `/api/agent-host` Fluid function (`maxDuration` 1800 — VERIFY beta; else 800 + handover), lease in LiveObjects, heartbeat, host-UI health + re-trigger. Local `pnpm agents:start`.
 - **S4.5** UI: agent chips + pulsing thinking state + quip bubbles; **thinking drawer** (live stream + per-question history + crib link + owner).
 - **S4.6** Commentator (§B2.9).
-- **Gate:** dry-run quiz: 5 agents on Vercel + humans; kill the agent-host function mid-quiz → lease lapses → re-trigger → agents return within ~30s and the quiz never stalls.
+- **S4.7 Agent dev kit — make "build your own agent" a 10-minute experience.** This is a first-class deliverable, not tooling polish; the company adoption story depends on it.
+  - `pnpm agent:new <slug>` — interactive scaffold: asks name/emoji/provider/model/personality/owner → writes a valid `agents/<slug>/agent.json` (+ commented `agent.ts` stub showing the `study()`/`answer()` override hooks).
+  - `pnpm agent:test <slug>` — **local harness, zero Ably setup required**: runs the agent against fixture questions (`packages/agent-runner/fixtures/questions.json`, all three bands) over an in-memory mock of the channel bus; the model call is real (only *their* provider key needed). Terminal output: thinking streamed live, then per-question `answer · correct? · latency · score`, a summary table, and a comparison against a committed baseline ("Matt Sonnet's fixture run") so builders instantly know if they'd beat the house. `--live --quiz <id>` joins a real quiz instead.
+  - The SAME harness (schema validation always; model run when keys are present) is the CI check for `agents/*` PRs in S6.4.
+  - Acceptance: a fresh clone + one provider key + two commands = a new agent answering fixture questions in under 10 minutes.
+- **Gate:** dry-run quiz: 5 agents on Vercel + humans; kill the agent-host function mid-quiz → lease lapses → re-trigger → agents return within ~30s and the quiz never stalls. Plus: S4.7 acceptance demonstrated end-to-end.
 - ⚠️ S4 must start no later than mid-week; it's the demo's heart.
 
 ### S5 — Polish & quiz-day readiness
@@ -282,14 +290,15 @@ Every task gets its own commit (`<type>(<scope>): <taskId> <summary>`). Every st
 - **S6.1** MCP grounding in the runner: **fast-model router** (Haiku-class: "answer from crib, or is ONE lookup worth it?") → single MCP call, hard 8s budget → main model answers; fall back to crib when the clock says so.
 - **S6.2** Ably MCP wiring: dev = Matt's OAuth (local), prod = service account (per security team's instructions — see Part A4; do not block other S6 work on it).
 - **S6.3** MCP-powered `study()` for Matt's roster (Wiki/docs trawl → richer cribs, run locally under OAuth).
-- **S6.4** PR-your-own-agent: `docs/AGENTS.md` (contract, budgets, rules: no early question access, answer via fan-in only, thinking must stream), CI job validating `agents/*` (schema + dry-run against 3 sample questions in a sandbox quiz).
+- **S6.4** PR-your-own-agent: `docs/AGENTS.md` (quickstart built on the S4.7 dev kit: scaffold → test → PR in three commands; contract, budgets, rules: no early question access, answer via fan-in only, thinking must stream), CI job = the S4.7 harness (schema always; fixture dry-run when keys available).
 - **S6.5** Open-source pass: secrets sweep, LICENSE (MIT), screenshots/GIF, "quiz your company's MCP" README hook. Target org: Ably Labs (Matt confirms timing).
 
 ## B4. Risks & mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Per-channel limits (msgs/s, presence members) at 300 players | Measured at S1.3/S3.6 before it matters; fan-in isolation already in the design; shard `:answers` if numbers demand |
+| Per-channel limits (msgs/s, presence members) at 300 players | Measured at S1.3/S3.6 before it matters; fan-in isolation kills the N² rebroadcast problem by design; **server-side batching** on `:answers` absorbs delivery bursts; shard `:answers:{0..n}` only if inbound publish limits demand |
+| Batching quantizes answer timestamps | VERIFY empirically at S1.3; worst case ±200ms uniform error on a 20s window (fair), tunable down to 100ms, or drop batching — fan-in alone suffices at ~80 players |
 | Agent host exceeds max duration / dies | Lease + heartbeat + re-trigger; AIT sessions durable; proven by the S4 kill test |
 | MCP latency blows the answer window | Fast-model router + 8s hard budget + crib fallback; MCP is S6, never on quiz-day critical path |
 | Provider latency variance on the night | S0 measured it; deadline budget force-answers at `limit−2s`; agents scoring 0 is a valid, funny outcome |

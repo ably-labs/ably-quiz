@@ -1,0 +1,61 @@
+# Build progress — Carbon vs Silicon
+
+> Maintained by the build agent. Check tasks off as they land (task IDs match BRIEF.md Part B §B3). Record deviations and blockers here — never diverge silently.
+
+## S0 — Latency spike (GO/NO-GO)
+- [ ] S0.1 spike script (providers with available keys; skip + record missing — day 0: Anthropic only)
+- [ ] S0.2 RESULTS.md with verdict (GO/window recommendation)
+- [ ] **GATE: GO verdict committed**
+
+## S1 — Foundation
+- [ ] S1.1 pnpm monorepo scaffold
+- [ ] S1.2 lint/format/test + CI + CONTRIBUTING.md
+- [ ] S1.3 Ably app setup (persistence, batching on answers namespace + timestamp VERIFY, AIT appends rule) + docs/ABLY-SETUP.md + limits notes
+- [ ] S1.4 /api/ably-auth JWT + capability matrix + tests
+- [ ] **GATE: CI green; two tabs pub/sub via issued JWTs**
+
+## S2 — Core engine
+- [ ] S2.1 protocol schemas (zod) + types
+- [ ] S2.2 quiz state machine
+- [ ] S2.3 scoring algorithms + counterfactual recompute + tests
+- [ ] S2.4 quizmaster engine (answers, dedupe, window, LiveObjects, recovery)
+- [ ] **GATE: engine e2e under test incl. 300-answer burst**
+
+## S3 — Humans-only playable
+- [ ] S3.1 create flow (paste TSV/CSV, algo picker, links + QR)
+- [ ] S3.2 lobby (presence roster)
+- [ ] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
+- [ ] S3.4 podium + results
+- [ ] S3.5 recovery tests (host + player refresh) + docs/TESTING.md
+- [ ] S3.6 synthetic 300-player load test
+- [ ] **GATE: full quiz, 5 real browsers + 300 synthetic, zero dropped answers, recovery passes**
+
+## S4 — Agents
+- [ ] S4.1 agent runner + registry loader
+- [ ] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
+- [ ] S4.3 roster of five + ably-digest + study script + cribs
+- [ ] S4.4 agent host on Vercel (Fluid, lease, heartbeat, re-trigger) + local runner
+- [ ] S4.5 UI: agent chips, thinking drawer, quips
+- [ ] S4.6 commentator
+- [ ] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison)
+- [ ] **GATE: dry run incl. agent-host kill/recovery test + dev-kit 10-minute experience**
+
+## S5 — Polish & quiz-day readiness
+- [ ] S5.1 counterfactual "by the way…" panel
+- [ ] S5.2 design polish pass (frontend-design skill)
+- [ ] S5.3 full dry run (~10 humans + roster + 300 synthetic) + tuning
+- [ ] S5.4 README + docs/RUNBOOK.md
+- [ ] **GATE: quiz-day definition of done (see brief)**
+
+## S6 — Week 2: MCP + open-source
+- [ ] S6.1 fast-model MCP router in runner
+- [ ] S6.2 Ably MCP wiring (dev OAuth; prod service account per security team)
+- [ ] S6.3 MCP-powered study()
+- [ ] S6.4 PR-your-own-agent docs + CI (dev-kit harness)
+- [ ] S6.5 open-source pass (Ably Labs)
+
+## Deviations
+_(none yet)_
+
+## Blocked
+_(none yet)_
