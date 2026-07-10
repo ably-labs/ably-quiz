@@ -82,7 +82,9 @@ async function main(): Promise<void> {
   console.log(`  MCP timing: skipped (no ABLY_MCP_URL/ABLY_MCP_AUTH; optional, S6)\n`);
 
   if (runModels.length === 0) {
-    console.error('No provider keys present — nothing to run. Add ANTHROPIC_API_KEY to .env.local.');
+    console.error(
+      'No provider keys present — nothing to run. Add ANTHROPIC_API_KEY to .env.local.',
+    );
     process.exitCode = 1;
     return;
   }
@@ -110,14 +112,21 @@ async function main(): Promise<void> {
   writeFileSync(outPath, md, 'utf8');
 
   // Console summary (verdict + overall latency).
-  const answered = records.filter((r) => r.ok && r.answerMs !== null).map((r) => r.answerMs as number);
+  const answered = records
+    .filter((r) => r.ok && r.answerMs !== null)
+    .map((r) => r.answerMs as number);
   const verdict = decideVerdict(records);
   console.log(summaryLine('overall time-to-answer', answered));
   console.log(`\nVERDICT: ${verdict.label} — ${verdict.reason}`);
   console.log(`Wrote ${new URL('./RESULTS.md', import.meta.url).pathname}`);
 }
 
-async function runOne(spec: ModelSpec, variant: Variant, q: Question, run: number): Promise<RunRecord> {
+async function runOne(
+  spec: ModelSpec,
+  variant: Variant,
+  q: Question,
+  run: number,
+): Promise<RunRecord> {
   const base: RunRecord = {
     modelKey: spec.key,
     provider: spec.provider,
@@ -196,7 +205,9 @@ type Verdict = {
 };
 
 function decideVerdict(records: RunRecord[]): Verdict {
-  const answered = records.filter((r) => r.ok && r.answerMs !== null).map((r) => r.answerMs as number);
+  const answered = records
+    .filter((r) => r.ok && r.answerMs !== null)
+    .map((r) => r.answerMs as number);
   const attempted = records.length;
   const successRate = attempted === 0 ? 0 : answered.length / attempted;
   const p95 = percentile(sortAsc(answered), 95);
@@ -250,23 +261,31 @@ function renderResults(ctx: {
   lines.push('');
   lines.push(`> **${verdict.label}** — ${verdict.reason}`);
   lines.push('');
-  lines.push('Thresholds (BRIEF §B3 S0.2): p95 time-to-answer ≤10s → GO/20s window · ≤20s → GO/30s window · else STOP.');
+  lines.push(
+    'Thresholds (BRIEF §B3 S0.2): p95 time-to-answer ≤10s → GO/20s window · ≤20s → GO/30s window · else STOP.',
+  );
   lines.push('');
 
   // Run metadata.
   lines.push('## Run configuration');
   lines.push('');
   lines.push(`- Runs per (model × variant × question): **${RUNS}**`);
-  lines.push(`- Concurrency: ${CONCURRENCY} · temperature: ${TEMPERATURE ?? 'provider default'} · maxTokens: ${MAX_TOKENS} · per-call timeout: ${fmtMs(TIMEOUT_MS)}`);
+  lines.push(
+    `- Concurrency: ${CONCURRENCY} · temperature: ${TEMPERATURE ?? 'provider default'} · maxTokens: ${MAX_TOKENS} · per-call timeout: ${fmtMs(TIMEOUT_MS)}`,
+  );
   lines.push(`- Questions: ${QUESTIONS.length} (${countBands()})`);
   lines.push(`- Providers run: ${runProviders.join(', ') || '(none)'}`);
   lines.push(
     `- Providers skipped (no key): ${
-      skippedProviders.length ? skippedProviders.map((p) => `${p} \`${keyEnvFor(p)}\``).join(', ') : '(none)'
+      skippedProviders.length
+        ? skippedProviders.map((p) => `${p} \`${keyEnvFor(p)}\``).join(', ')
+        : '(none)'
     }`,
   );
   lines.push(`- Models run: ${runModels.map((m) => `\`${m.model}\` (${m.key})`).join(', ')}`);
-  lines.push('- Single-MCP-call timing: **skipped** — no `ABLY_MCP_URL` / `ABLY_MCP_AUTH` (optional; MCP is S6, never on the quiz-day critical path).');
+  lines.push(
+    '- Single-MCP-call timing: **skipped** — no `ABLY_MCP_URL` / `ABLY_MCP_AUTH` (optional; MCP is S6, never on the quiz-day critical path).',
+  );
   lines.push('');
 
   // Overall latency.
@@ -274,9 +293,24 @@ function renderResults(ctx: {
   lines.push('');
   lines.push('| metric | p50 | p95 | p99 | max | n |');
   lines.push('|---|--:|--:|--:|--:|--:|');
-  lines.push(latencyRow('TTFT', answered.map((r) => r.ttftMs)));
-  lines.push(latencyRow('time-to-answer (valid JSON)', answered.map((r) => r.answerMs)));
-  lines.push(latencyRow('total stream time', answered.map((r) => r.totalMs)));
+  lines.push(
+    latencyRow(
+      'TTFT',
+      answered.map((r) => r.ttftMs),
+    ),
+  );
+  lines.push(
+    latencyRow(
+      'time-to-answer (valid JSON)',
+      answered.map((r) => r.answerMs),
+    ),
+  );
+  lines.push(
+    latencyRow(
+      'total stream time',
+      answered.map((r) => r.totalMs),
+    ),
+  );
   lines.push('');
   const attempts = records.length;
   const ok = answered.length;
@@ -320,22 +354,32 @@ function renderResults(ctx: {
   lines.push('| band | p50 | p95 | max |');
   lines.push('|---|--:|--:|--:|');
   for (const band of ['general', 'ably-docs', 'ably-internal'] as Band[]) {
-    const s = sortAsc(records.filter((r) => r.ok && r.band === band).map((r) => r.answerMs as number));
-    lines.push(`| ${band} | ${fmtMs(percentile(s, 50))} | ${fmtMs(percentile(s, 95))} | ${fmtMs(percentile(s, 100))} |`);
+    const s = sortAsc(
+      records.filter((r) => r.ok && r.band === band).map((r) => r.answerMs as number),
+    );
+    lines.push(
+      `| ${band} | ${fmtMs(percentile(s, 50))} | ${fmtMs(percentile(s, 95))} | ${fmtMs(percentile(s, 100))} |`,
+    );
   }
   lines.push('');
 
   // Accuracy: the real "would an agent even score?" question.
   lines.push('## Accuracy by band × variant');
   lines.push('');
-  lines.push('Share of answered calls whose `choice` was correct. `bare` = no grounding; `digest` = shared Ably digest injected.');
+  lines.push(
+    'Share of answered calls whose `choice` was correct. `bare` = no grounding; `digest` = shared Ably digest injected.',
+  );
   lines.push('');
   lines.push('| band | bare | digest |');
   lines.push('|---|--:|--:|');
   for (const band of ['general', 'ably-docs', 'ably-internal'] as Band[]) {
-    lines.push(`| ${band} | ${accuracyCell(records, band, 'bare')} | ${accuracyCell(records, band, 'digest')} |`);
+    lines.push(
+      `| ${band} | ${accuracyCell(records, band, 'bare')} | ${accuracyCell(records, band, 'digest')} |`,
+    );
   }
-  lines.push(`| **all** | ${accuracyCell(records, null, 'bare')} | ${accuracyCell(records, null, 'digest')} |`);
+  lines.push(
+    `| **all** | ${accuracyCell(records, null, 'bare')} | ${accuracyCell(records, null, 'digest')} |`,
+  );
   lines.push('');
 
   // Per-model accuracy.
@@ -353,21 +397,34 @@ function renderResults(ctx: {
   // Interpretation.
   lines.push('## Reading this');
   lines.push('');
-  lines.push('- **Time-to-answer** is when a valid answer JSON could first be parsed from the stream — the moment the quiz could act on it. This is the number the verdict uses.');
+  lines.push(
+    '- **Time-to-answer** is when a valid answer JSON could first be parsed from the stream — the moment the quiz could act on it. This is the number the verdict uses.',
+  );
   lines.push('- **TTFT** is when the visible think-aloud starts streaming to the screen.');
-  lines.push('- The **general** band is the control (grounding should not matter). Lift on **ably-docs**/**ably-internal** from `bare`→`digest` is the pre-learning meta-game working — an un-grounded model guesses; a briefed one is faster and right (BRIEF §A3).');
-  lines.push('- A late/failed answer scores 0 in the real quiz and the quiz never waits (BRIEF §B2.7); the valid-answer rate above is the reliability signal behind the verdict.');
+  lines.push(
+    '- The **general** band is the control (grounding should not matter). Lift on **ably-docs**/**ably-internal** from `bare`→`digest` is the pre-learning meta-game working — an un-grounded model guesses; a briefed one is faster and right (BRIEF §A3).',
+  );
+  lines.push(
+    '- A late/failed answer scores 0 in the real quiz and the quiz never waits (BRIEF §B2.7); the valid-answer rate above is the reliability signal behind the verdict.',
+  );
   lines.push('');
 
   lines.push('## Methodology');
   lines.push('');
-  lines.push('One streamed model call per run in the real answer shape (BRIEF §B2.7): a ≤2-sentence visible think-aloud followed by strict answer JSON `{choice,confidence,quip}`, parsed incrementally from the stream. All calls stream so TTFT and time-to-answer are measured from the same stream. Question set and the shared digest are in `questions.ts` (Ably facts verified against `ably.com/llms.txt` on 2026-07-11). Provider adapters and JSON extraction are in `providers.ts`.');
+  lines.push(
+    'One streamed model call per run in the real answer shape (BRIEF §B2.7): a ≤2-sentence visible think-aloud followed by strict answer JSON `{choice,confidence,quip}`, parsed incrementally from the stream. All calls stream so TTFT and time-to-answer are measured from the same stream. Question set and the shared digest are in `questions.ts` (Ably facts verified against `ably.com/llms.txt` on 2026-07-11). Provider adapters and JSON extraction are in `providers.ts`.',
+  );
   lines.push('');
   return lines.join('\n');
 }
 
 // --- Small helpers ----------------------------------------------------------
-function accuracyCell(records: RunRecord[], band: Band | null, variant: Variant, modelKey?: string): string {
+function accuracyCell(
+  records: RunRecord[],
+  band: Band | null,
+  variant: Variant,
+  modelKey?: string,
+): string {
   const recs = records.filter(
     (r) =>
       r.ok &&
@@ -439,7 +496,11 @@ function optFloatEnv(name: string): number | undefined {
 }
 
 /** Run thunks with bounded concurrency, calling onDone as each settles. */
-async function runPool<T>(tasks: (() => Promise<T>)[], limit: number, onDone: (r: T) => void): Promise<T[]> {
+async function runPool<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number,
+  onDone: (r: T) => void,
+): Promise<T[]> {
   const results: T[] = new Array(tasks.length);
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(limit, tasks.length)) }, async () => {

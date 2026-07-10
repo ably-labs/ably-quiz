@@ -44,9 +44,24 @@ export type StreamResult = {
 // Anthropic ids are the real quiz roster (BRIEF §B2.7). OpenAI/xAI ids are
 // overridable via env and must be VERIFIED at S4 before the live quiz.
 export const MODELS: ModelSpec[] = [
-  { key: 'matt-opus', label: 'Matt Opus (claude-opus-4-8)', provider: 'anthropic', model: 'claude-opus-4-8' },
-  { key: 'matt-sonnet', label: 'Matt Sonnet (claude-sonnet-5)', provider: 'anthropic', model: 'claude-sonnet-5' },
-  { key: 'matt-fable', label: 'Matt Fable (claude-fable-5)', provider: 'anthropic', model: 'claude-fable-5' },
+  {
+    key: 'matt-opus',
+    label: 'Matt Opus (claude-opus-4-8)',
+    provider: 'anthropic',
+    model: 'claude-opus-4-8',
+  },
+  {
+    key: 'matt-sonnet',
+    label: 'Matt Sonnet (claude-sonnet-5)',
+    provider: 'anthropic',
+    model: 'claude-sonnet-5',
+  },
+  {
+    key: 'matt-fable',
+    label: 'Matt Fable (claude-fable-5)',
+    provider: 'anthropic',
+    model: 'claude-fable-5',
+  },
   {
     key: 'matt-gpt',
     label: 'Matt GPT (OpenAI — VERIFY id at S4)',

@@ -27,14 +27,14 @@ run; the rest are **skipped and recorded** in `RESULTS.md`. Day 0 is Anthropic-o
 
 ### Env knobs (optional)
 
-| var | default | purpose |
-|---|---|---|
-| `SPIKE_RUNS` | 3 | runs per (model × variant × question) |
-| `SPIKE_CONCURRENCY` | 4 | in-flight calls |
-| `SPIKE_TEMPERATURE` | _unset_ | omitted by default (newer Claude models reject it) |
-| `SPIKE_MAX_TOKENS` | 400 | output budget |
-| `SPIKE_TIMEOUT_MS` | 60000 | per-call timeout |
-| `OPENAI_MODEL` / `XAI_MODEL` | see `providers.ts` | override model ids (VERIFY at S4) |
+| var                          | default            | purpose                                            |
+| ---------------------------- | ------------------ | -------------------------------------------------- |
+| `SPIKE_RUNS`                 | 3                  | runs per (model × variant × question)              |
+| `SPIKE_CONCURRENCY`          | 4                  | in-flight calls                                    |
+| `SPIKE_TEMPERATURE`          | _unset_            | omitted by default (newer Claude models reject it) |
+| `SPIKE_MAX_TOKENS`           | 400                | output budget                                      |
+| `SPIKE_TIMEOUT_MS`           | 60000              | per-call timeout                                   |
+| `OPENAI_MODEL` / `XAI_MODEL` | see `providers.ts` | override model ids (VERIFY at S4)                  |
 
 ## Verdict thresholds (BRIEF §B3 S0.2)
 
