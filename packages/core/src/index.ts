@@ -9,3 +9,4 @@ export const CORE_PACKAGE = '@ably-quiz/core';
 
 export * from './channels';
 export * from './auth';
+export * from './protocol';
