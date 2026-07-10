@@ -23,7 +23,7 @@
 ## S2 — Core engine
 
 - [x] S2.1 protocol schemas (zod) + types
-- [ ] S2.2 quiz state machine
+- [x] S2.2 quiz state machine
 - [ ] S2.3 scoring algorithms + counterfactual recompute + tests
 - [ ] S2.4 quizmaster engine (answers, dedupe, window, LiveObjects, recovery)
 - [ ] **GATE: engine e2e under test incl. 300-answer burst**
