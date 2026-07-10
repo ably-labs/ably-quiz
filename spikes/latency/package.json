@@ -1,0 +1,21 @@
+{
+  "name": "ably-quiz-spike-latency",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "S0 GO/NO-GO latency spike — standalone, no app code (BRIEF §B3 S0).",
+  "scripts": {
+    "spike": "tsx spike.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "dotenv": "^17.4.2",
+    "openai": "^6.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3"
+  }
+}
