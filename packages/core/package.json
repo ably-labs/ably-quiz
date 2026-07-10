@@ -1,0 +1,13 @@
+{
+  "name": "@ably-quiz/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isomorphic quiz engine: protocol schemas, state machine, scoring, quizmaster (BRIEF §B2.4–2.6). No DOM imports — must run in the browser and under Node.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

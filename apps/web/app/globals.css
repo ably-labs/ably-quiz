@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+/* Carbon vs Silicon — one dark theme done properly (BRIEF §B2.10).
+   Near-black canvas, Ably orange as the single accent. Real polish in S5. */
+@theme {
+  --color-canvas: #0a0a0b;
+  --color-ink: #ededed;
+  --color-ably: #ff5416;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

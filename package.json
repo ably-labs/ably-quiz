@@ -1,0 +1,20 @@
+{
+  "name": "ably-quiz",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Carbon vs Silicon — a live quiz where humans and AI agents compete, built entirely on Ably.",
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @ably-quiz/web dev",
+    "build": "pnpm --filter @ably-quiz/web build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
+  }
+}

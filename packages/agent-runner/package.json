@@ -1,0 +1,16 @@
+{
+  "name": "@ably-quiz/agent-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Plain-Node agent runner: connect, presence, AIT session, stream think-aloud, answer via fan-in (BRIEF §B2.7). Real implementation in S4.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ably-quiz/core": "workspace:*"
+  }
+}

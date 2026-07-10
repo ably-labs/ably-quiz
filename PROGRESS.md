@@ -10,7 +10,7 @@
 **Stage note (S0 complete):** `spikes/latency/` is a standalone TS package (no app code, no Ably key). Ran the Anthropic roster (Opus 4.8 / Sonnet 5 / Fable 5), 3 runs × 2 variants (bare/with-digest) × 12 questions = 216 calls. OpenAI + xAI skipped (no keys) and recorded; MCP timing skipped (optional, S6). **Verdict: GO, 20s window** — p95 time-to-answer 5.76s, 100% valid-answer rate. Grounding lifts the `ably-internal` band 83% → 100% (the pre-learning meta-game working, per §A3). Full numbers in [spikes/latency/RESULTS.md](spikes/latency/RESULTS.md). Re-run the script as `OPENAI_API_KEY`/`XAI_API_KEY` arrive.
 
 ## S1 — Foundation
-- [ ] S1.1 pnpm monorepo scaffold
+- [x] S1.1 pnpm monorepo scaffold
 - [ ] S1.2 lint/format/test + CI + CONTRIBUTING.md
 - [ ] S1.3 Ably app setup (persistence, batching on answers namespace + timestamp VERIFY, AIT appends rule) + docs/ABLY-SETUP.md + limits notes
 - [ ] S1.4 /api/ably-auth JWT + capability matrix + tests

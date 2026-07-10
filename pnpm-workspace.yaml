@@ -1,0 +1,7 @@
+# Carbon vs Silicon monorepo (BRIEF §B3 S1.1).
+# agents/* are a registry of agent folders loaded at runtime, NOT npm packages,
+# so they are intentionally not workspace members.
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'spikes/*'
