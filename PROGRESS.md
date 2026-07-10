@@ -16,7 +16,9 @@
 - [x] S1.2 lint/format/test + CI + CONTRIBUTING.md
 - [x] S1.3 Ably app setup (persistence, batching on answers namespace + timestamp VERIFY, AIT appends rule) + docs/ABLY-SETUP.md + limits notes
 - [x] S1.4 /api/ably-auth JWT + capability matrix + tests
-- [ ] **GATE: CI green; two tabs pub/sub via issued JWTs**
+- [~] **GATE: CI green; two tabs pub/sub via issued JWTs** — pub/sub via issued JWTs **PROVEN** (see below); CI-green pending first push/PR (needs Matt's OK — outward action).
+
+**Stage note (S1):** Monorepo (Next 16 / React 19 / Tailwind v4 · core · agent-runner · spikes) with strict TS, ESLint flat, Prettier, Vitest, and GitHub Actions CI (lint · format · typecheck · test). Ably app `YOUR_APP_ID` configured (3 namespaces); batch-timestamp semantics verified empirically (quantized → accept, §B2.1). `/api/ably-auth` issues role-scoped Ably JWTs; capability matrix + JWT signing unit-tested (21 tests). **S1 gate pub/sub proven end-to-end** via `spikes/auth-e2e` against real Ably: host→main broadcast, player→answers fan-in, and player-publish-to-main correctly denied (40160). Full local gate green. The only outstanding gate item is observing CI green on GitHub, which requires pushing the branch (awaiting go-ahead).
 
 ## S2 — Core engine
 

@@ -91,6 +91,19 @@ importers:
         specifier: ^4.23.0
         version: 4.23.0
 
+  spikes/auth-e2e:
+    dependencies:
+      ably:
+        specifier: ^2.0.0
+        version: 2.24.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+    devDependencies:
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
+
   spikes/latency:
     dependencies:
       '@anthropic-ai/sdk':
