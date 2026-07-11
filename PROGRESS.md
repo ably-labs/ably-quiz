@@ -81,10 +81,12 @@
 
 _(none yet)_
 
-## Deviations (create-flow, from Matt's 2026-07-11 review — pending implementation)
+## Deviations (create-flow, from Matt's 2026-07-11 review — landed)
 
-- **Host key removed entirely.** The brief (§A2/§B2.5) gated hosting/agent-spawning behind `HOST_KEY`. Matt's call: over-engineered for this demo — it runs on a free, resource-limited account, the quiz id is effectively unguessable, and we don't care if someone abuses it (Ably caps the blast radius). So `/api/ably-auth` will issue host/agent tokens without any secret; the create page drops the host-secret field; `HOST_KEY` env + `lib/host-secret.ts` go away. Roles/clientId prefixes stay (for capabilities + kind). Re-add a gate only if a real deployment needs it.
-- **Question grid → `react-datasheet-grid`.** Replace the custom paste grid with the lightweight dedicated library (Matt prefers not maintaining our own where a good light one exists).
+- **Host key removed entirely.** The brief (§A2/§B2.5) gated hosting/agent-spawning behind `HOST_KEY`. Matt's call: over-engineered for this demo — free, resource-limited account, unguessable quiz id, Ably caps the blast radius. `/api/ably-auth` now issues host/agent tokens with no secret; the create host-secret field, `lib/host-secret.ts`, and `HOST_KEY` env/`.env.example` are gone. Roles/clientId prefixes stay. Re-add a gate only if a real deployment needs it.
+- **Question grid → `react-datasheet-grid`** (lightweight dedicated library, dark-themed) instead of a custom grid — native spreadsheet copy/paste.
+- **Create UX:** quiz-wide "default time per question"; Time/Category marked optional ("leave blank for default"; Category = a screen label). Scoring blurbs reframed as "pick this if…".
+- **Bug fixed (host clientId):** `connect()` set the client's clientId from a first token fetch while `authCallback` fetched again — for the host (no clientId sent) the server randomised each fetch → Ably's "invalid clientId for credentials". Now a stable clientId base is pinned up front. `spikes/quiz-sim` host now connects via the real `connect()` so this is regression-tested; verified in a real browser end-to-end (host connects, 5 live players, both questions fan-in, lock/reveal cycle).
 
 ## Backlog / follow-ups (from Matt, beyond the original brief)
 
