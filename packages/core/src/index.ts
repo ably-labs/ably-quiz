@@ -11,3 +11,4 @@ export * from './channels';
 export * from './auth';
 export * from './protocol';
 export * from './state-machine';
+export * from './scoring';
