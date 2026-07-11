@@ -4,7 +4,14 @@ import type { ReactNode } from 'react';
 import { getAlgo } from '@ably-quiz/core';
 import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
-import { Countdown, Podium, QuestionCard, Scoreboard, TallyBars, TugOfWar } from '@/components/quiz';
+import {
+  Countdown,
+  Podium,
+  QuestionCard,
+  Scoreboard,
+  TallyBars,
+  TugOfWar,
+} from '@/components/quiz';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useQuizId } from '@/hooks/useQuizId';
 import { useQuizState } from '@/hooks/useQuizState';

@@ -6,6 +6,7 @@
   "description": "Drive a real quiz through Ably: host (core Quizmaster + web adapters) + N synthetic players. Verifies the S3.3 loop and is the S3.6 load harness.",
   "scripts": {
     "sim": "tsx sim.ts",
+    "recover": "tsx recover.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

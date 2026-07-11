@@ -2,14 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { buildCapability, kindFromClientId, resolveClientId } from './auth';
 
 describe('buildCapability (§B2.5 matrix)', () => {
-  it('player: read main + LiveObjects, publish answers only, no agent access', () => {
+  it('player: read main + LiveObjects + history, publish answers only, no agent access', () => {
     const cap = buildCapability('player', 'q1');
     expect(cap).toEqual({
-      'quiz:q1': ['subscribe', 'presence', 'object-subscribe'],
+      'quiz:q1': ['subscribe', 'presence', 'object-subscribe', 'history'],
       'quiz-answers:q1': ['publish'],
     });
     // A player cannot subscribe to the fan-in answers channel.
     expect(cap['quiz-answers:q1']).not.toContain('subscribe');
+    // History on main lets a refreshed player re-derive the in-flight question (S3.5).
+    expect(cap['quiz:q1']).toContain('history');
   });
 
   it('host: full on all three of the quiz channel groups', () => {
@@ -24,7 +26,7 @@ describe('buildCapability (§B2.5 matrix)', () => {
   it('agent: publish answers + full on its OWN session only', () => {
     const cap = buildCapability('agent', 'q1', 'matt-fable');
     expect(cap).toEqual({
-      'quiz:q1': ['subscribe', 'presence'],
+      'quiz:q1': ['subscribe', 'presence', 'history'],
       'quiz-answers:q1': ['publish'],
       'quiz-agent:q1:matt-fable': ['*'],
     });

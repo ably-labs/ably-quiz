@@ -36,7 +36,7 @@
 - [x] S3.2 lobby (presence roster)
 - [x] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
 - [x] S3.4 podium + results
-- [ ] S3.5 recovery tests (host + player refresh) + docs/TESTING.md
+- [x] S3.5 recovery tests (host + player refresh) + docs/TESTING.md
 - [ ] S3.6 synthetic 300-player load test
 - [ ] **GATE: full quiz, 5 real browsers + 300 synthetic, zero dropped answers, recovery passes**
 
@@ -89,6 +89,9 @@ _(none yet)_
 - **Bug fixed (host clientId):** `connect()` set the client's clientId from a first token fetch while `authCallback` fetched again — for the host (no clientId sent) the server randomised each fetch → Ably's "invalid clientId for credentials". Now a stable clientId base is pinned up front. `spikes/quiz-sim` host now connects via the real `connect()` so this is regression-tested; verified in a real browser end-to-end (host connects, 5 live players, both questions fan-in, lock/reveal cycle).
 - **Dev-only "load samples" link.** On localhost/`.local`/`.test` hosts only, the create page shows a "load samples" link that fills the grid with 5 ready-made questions, so manual testing doesn't need retyping a quiz each time. Hostname-gated; never rendered in prod.
 - **Grid add-row footer dark-themed.** `react-datasheet-grid`'s `.dsg-add-row` shipped as a light strip with black text; overridden to canvas/ink to match the rest of the grid.
+- **S3.5 (player/agent `history` capability).** The §B2.5 matrix gave players only `subscribe/presence/object-subscribe` on the main channel. Added `history` (players + agents) so a refreshed player re-derives the in-flight question from control history — the question text is broadcast as control, not held in LiveObjects (§B2.3), so it can't be recovered from object state alone. Host already has `*`. Capability tests updated.
+- **S3.5 (recovery wiring).** `useHostQuiz` now reads control+answer history on connect and calls `Quizmaster.recover` when a question was already broadcast (else `init`), buffering live answers until replay completes (engine dedup makes overlap safe). `useQuizState` seeds the in-flight question (+reveal) from control history unless a live control already arrived. Proven end-to-end against real Ably by `spikes/quiz-sim/recover.ts` (host B rebuilt == host A: phase/idx/log/scores; player-token history reconstructs the question; recovered host resumes to podium). Manual browser procedure + all test commands in [docs/TESTING.md](docs/TESTING.md).
+- **S3.5 (defensive store writes).** `AblyLiveStore.write` now swallows+warns on failure instead of leaving a rejected fire-and-forget promise — a coalesced flush can race a closing connection (host refresh/unload), which otherwise crashed Node and logged noisily in the browser. The host re-writes whole values on every change, so a dropped best-effort write is recoverable.
 
 ## Backlog / follow-ups (from Matt, beyond the original brief)
 

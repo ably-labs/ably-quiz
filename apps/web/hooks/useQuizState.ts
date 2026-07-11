@@ -6,6 +6,7 @@ import type { Connection } from '@/lib/ably';
 import {
   getMainChannel,
   INITIAL_STATE,
+  loadControlHistory,
   subscribeQuizState,
   type LiveQuizState,
 } from '@/lib/quiz-live';
@@ -37,10 +38,14 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
     if (!conn) return;
     const channel = getMainChannel(conn.client, quizId, { write: false });
     let unsub = () => {};
+    // Once a live control lands, it's fresher than any history seed — so a late
+    // history reconstruction must not clobber it (§B3 S3.5 player recovery).
+    let liveSeen = false;
 
     void channel.subscribe('control', (msg) => {
       const m = parseControlMessage(msg.data);
       if (!m) return;
+      liveSeen = true;
       if (m.type === 'question') {
         setQuestion({
           idx: m.idx,
@@ -57,6 +62,32 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
 
     void subscribeQuizState(channel, setLive).then((u) => {
       unsub = u;
+    });
+
+    // Recovery: a player/screen that joins mid-question missed the live question
+    // broadcast, so re-derive the in-flight question (+ its reveal) from control
+    // history. Skipped if a live control already arrived (that's authoritative).
+    void loadControlHistory(channel).then((hist) => {
+      if (liveSeen) return;
+      let q: QuestionBroadcast | null = null;
+      let c: Choice | null = null;
+      for (const { msg, serverTs } of hist) {
+        if (msg.type === 'question') {
+          q = {
+            idx: msg.idx,
+            prompt: msg.prompt,
+            options: msg.options,
+            limitMs: msg.limitMs,
+            startedAt: serverTs,
+          };
+          c = null;
+        } else if (msg.type === 'reveal' && q && msg.idx === q.idx) {
+          c = msg.correct;
+        }
+      }
+      if (liveSeen || !q) return;
+      setQuestion(q);
+      setCorrect(c);
     });
 
     return () => {

@@ -22,9 +22,14 @@ export const CLIENT_ID_PREFIX: Record<Role, string> = {
 
 /**
  * The capability matrix (§B2.5), using the deviation channel names:
- * - player: main subscribe/presence + read LiveObjects; publish answers only.
+ * - player: main subscribe/presence + read LiveObjects + history; publish answers only.
  * - host/quizmaster: full on all three of this quiz's channel groups.
- * - agent: main subscribe/presence; publish answers; full on its OWN session.
+ * - agent: main subscribe/presence + history; publish answers; full on its OWN session.
+ *
+ * `history` on the main channel lets a refreshed player/agent re-derive the
+ * in-flight question (broadcast as control, not held in LiveObjects — §B2.3)
+ * so they rejoin mid-question seamlessly (§B3 S3.5). The host reads both
+ * channels' history to rebuild the quizmaster on refresh; it has `*`.
  */
 export function buildCapability(role: Role, quizId: string, slug?: string): Capability {
   const main = mainChannel(quizId);
@@ -33,7 +38,7 @@ export function buildCapability(role: Role, quizId: string, slug?: string): Capa
   switch (role) {
     case 'player':
       return {
-        [main]: ['subscribe', 'presence', 'object-subscribe'],
+        [main]: ['subscribe', 'presence', 'object-subscribe', 'history'],
         [answers]: ['publish'],
       };
     case 'host':
@@ -45,7 +50,7 @@ export function buildCapability(role: Role, quizId: string, slug?: string): Capa
     case 'agent': {
       if (!slug) throw new Error('agent capability requires a slug');
       return {
-        [main]: ['subscribe', 'presence'],
+        [main]: ['subscribe', 'presence', 'history'],
         [answers]: ['publish'],
         [agentChannel(quizId, slug)]: ['*'],
       };

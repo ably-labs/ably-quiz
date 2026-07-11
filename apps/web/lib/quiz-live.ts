@@ -6,9 +6,12 @@ import type * as Ably from 'ably';
 import {
   answersChannel,
   mainChannel,
+  parseControlMessage,
   type Broadcaster,
   type Choice,
+  type ControlHistoryEntry,
   type ControlMessage,
+  type InboundAnswer,
   type Phase,
   type QuizConfig,
   type QuizStore,
@@ -138,8 +141,17 @@ export class AblyLiveStore implements QuizStore {
   }
 
   private async write(key: string, value: unknown): Promise<void> {
-    const root = await this.rootPromise;
-    await root.set(key, value);
+    // Best-effort: every writer here is fire-and-forget (`void this.write`), and
+    // the host re-writes the whole value on each change, so a single failure is
+    // recoverable. A coalesced flush can also fire just as the connection closes
+    // (host refresh / tab unload) — swallow that so it never surfaces as an
+    // unhandled rejection (which crashes Node and noisily logs in the browser).
+    try {
+      const root = await this.rootPromise;
+      await root.set(key, value);
+    } catch (err) {
+      console.warn(`quiz state write (${key}) failed:`, err);
+    }
   }
 }
 
@@ -177,6 +189,45 @@ export async function subscribeQuizState(
   root.subscribe(() => onState(read()));
   onState(read());
   return () => undefined;
+}
+
+// --- Recovery: channel-history readers (§B2.3, S3.5) ------------------------
+// Persistence is enabled on the quiz namespaces (docs/ABLY-SETUP.md), so both
+// channels' history is the durable log the host replays to rebuild state and a
+// refreshed player uses to re-derive the in-flight question.
+
+/** Page through a channel's full history, chronological (oldest first). */
+async function pageAll(channel: Ably.RealtimeChannel): Promise<Ably.Message[]> {
+  const out: Ably.Message[] = [];
+  let page: Ably.PaginatedResult<Ably.Message> | null = await channel.history({
+    direction: 'forwards',
+    limit: 1000,
+  });
+  while (page) {
+    out.push(...page.items);
+    page = page.hasNext() ? await page.next() : null;
+  }
+  return out;
+}
+
+/** Control history on the main channel, chronological — feeds Quizmaster.recover. */
+export async function loadControlHistory(
+  main: Ably.RealtimeChannel,
+): Promise<ControlHistoryEntry[]> {
+  const out: ControlHistoryEntry[] = [];
+  for (const m of await pageAll(main)) {
+    if (m.name !== 'control') continue;
+    const msg = parseControlMessage(m.data);
+    if (msg) out.push({ msg, serverTs: m.timestamp ?? 0 });
+  }
+  return out;
+}
+
+/** Answer history on the fan-in channel — feeds Quizmaster.recover. */
+export async function loadAnswerHistory(answers: Ably.RealtimeChannel): Promise<InboundAnswer[]> {
+  return (await pageAll(answers))
+    .filter((m) => m.name === 'answer')
+    .map((m) => ({ clientId: m.clientId ?? '', data: m.data, serverTs: m.timestamp ?? 0 }));
 }
 
 export { answersChannel, mainChannel, INITIAL_STATE };

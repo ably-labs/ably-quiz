@@ -1,10 +1,18 @@
 'use client';
 
-import { kindFromClientId, Quizmaster, type QuizState } from '@ably-quiz/core';
+import { kindFromClientId, Quizmaster, type InboundAnswer, type QuizState } from '@ably-quiz/core';
+import type * as Ably from 'ably';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 import type { Member } from '@/hooks/useAbly';
-import { AblyBroadcaster, AblyLiveStore, answersChannel, getMainChannel } from '@/lib/quiz-live';
+import {
+  AblyBroadcaster,
+  AblyLiveStore,
+  answersChannel,
+  getMainChannel,
+  loadAnswerHistory,
+  loadControlHistory,
+} from '@/lib/quiz-live';
 import type { StoredQuiz } from '@/lib/quiz-storage';
 
 export type HostControls = {
@@ -43,10 +51,9 @@ export function useHostQuiz(
       store: new AblyLiveStore(client, quiz.quizId),
     });
     qmRef.current = qm;
-    qm.init();
-    setState(qm.getState());
 
     const main = getMainChannel(client, quiz.quizId, { write: true });
+    const answers = client.channels.get(answersChannel(quiz.quizId));
     const toMember = (m: { clientId?: string | undefined; data?: unknown }): Member => ({
       clientId: m.clientId ?? '?',
       kind: kindFromClientId(m.clientId ?? ''),
@@ -57,20 +64,58 @@ export function useHostQuiz(
       setMembers(present.map(toMember));
       for (const m of present) if (m.clientId) qm.setDisplayName(m.clientId, toMember(m).name);
     };
-    void main.presence.subscribe(() => void refresh());
-    void refresh();
 
-    const answers = client.channels.get(answersChannel(quiz.quizId));
-    void answers.subscribe((msg) => {
-      qm.ingest({
+    // Until history is replayed the engine hasn't got its phase/T₀ back, so
+    // buffer inbound answers rather than feeding them to a lobby-state engine
+    // that would ignore them. The engine dedupes on replay, so a buffered
+    // answer that also appears in history is counted once.
+    let ready = false;
+    const buffer: InboundAnswer[] = [];
+    const ingest = (raw: InboundAnswer) => {
+      qm.ingest(raw);
+      setAnswersIn((n) => n + 1);
+    };
+    const onAnswer = (msg: Ably.Message) => {
+      const raw: InboundAnswer = {
         clientId: msg.clientId ?? '',
         data: msg.data,
         serverTs: msg.timestamp ?? Date.now(),
-      });
-      setAnswersIn((n) => n + 1);
-    });
+      };
+      if (ready) ingest(raw);
+      else buffer.push(raw);
+    };
+
+    let cancelled = false;
+    void (async () => {
+      // Subscribe FIRST (attaches the channels) so no live message slips through
+      // the gap between reading history and going live.
+      await answers.subscribe(onAnswer);
+      await main.presence.subscribe(() => void refresh());
+      await refresh();
+
+      const [controlHistory, answerHistory] = await Promise.all([
+        loadControlHistory(main),
+        loadAnswerHistory(answers),
+      ]);
+      if (cancelled) return;
+
+      // A quiz that already broadcast a question is mid-flight → rebuild it;
+      // otherwise this is a fresh start.
+      if (controlHistory.some((c) => c.msg.type === 'question')) {
+        qm.recover(controlHistory, answerHistory);
+      } else {
+        qm.init();
+      }
+
+      ready = true;
+      for (const raw of buffer.splice(0)) qm.ingest(raw); // dedup handles overlap
+      const idx = qm.getState().questionIdx;
+      setAnswersIn(qm.getAnswerLog().filter((e) => e.idx === idx).length);
+      setState(qm.getState());
+    })();
 
     return () => {
+      cancelled = true;
       qmRef.current = null;
       answers.unsubscribe();
       main.presence.unsubscribe();

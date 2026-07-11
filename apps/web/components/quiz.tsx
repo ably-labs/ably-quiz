@@ -194,8 +194,7 @@ export function Podium({ scoreboard }: { scoreboard: Record<string, ScoreboardEn
     { entry: gold, rank: 1, medal: '🥇', pedestal: 'h-32', delay: '0s' },
     { entry: bronze, rank: 3, medal: '🥉', pedestal: 'h-12', delay: '0.3s' },
   ];
-  const verdict =
-    gold!.kind === 'agent' ? 'Silicon takes it 🤖' : 'Carbon takes it 🧠';
+  const verdict = gold!.kind === 'agent' ? 'Silicon takes it 🤖' : 'Carbon takes it 🧠';
 
   return (
     <div className="space-y-10">
