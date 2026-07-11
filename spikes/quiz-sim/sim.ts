@@ -20,6 +20,7 @@ import {
   type QuizConfig,
 } from '@ably-quiz/core';
 import { AblyBroadcaster, AblyLiveStore, getMainChannel } from '../../apps/web/lib/quiz-live';
+import { connect } from '../../apps/web/lib/ably';
 
 loadEnv({ path: fileURLToPath(new URL('../../.env.local', import.meta.url)) });
 
@@ -60,6 +61,16 @@ const CONFIG: QuizConfig = {
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+function whenConnected(client: Ably.Realtime): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (client.connection.state === 'connected') return resolve();
+    client.connection.once('connected', () => resolve());
+    client.connection.once('failed', () =>
+      reject(new Error(`connection failed: ${client.connection.errorReason?.message ?? 'unknown'}`)),
+    );
+  });
+}
+
 async function token(body: Record<string, unknown>): Promise<string> {
   const res = await fetch(`${BASE}/api/ably-auth`, {
     method: 'POST',
@@ -95,11 +106,13 @@ async function main(): Promise<void> {
         const m = parseControlMessage(msg.data);
         if (m?.type !== 'question') return;
         // Deterministic-ish correctness by player index, jittered answer time.
-        const correct = i / PLAYERS < CORRECT_RATE;
-        const correctLetter =
-          LETTERS[m.options.indexOf(QUESTIONS[m.idx]!.options[QUESTIONS[m.idx]!.correctIndex]!)] ??
-          'A';
-        const choice = correct ? correctLetter : LETTERS[(m.idx + i) % m.options.length]!;
+        // Guarded so players also work against an external host's question set.
+        const def = QUESTIONS[m.idx];
+        const correctLetter = def
+          ? (LETTERS[m.options.indexOf(def.options[def.correctIndex]!)] ?? 'A')
+          : 'A';
+        const wantCorrect = i / PLAYERS < CORRECT_RATE;
+        const choice = wantCorrect ? correctLetter : LETTERS[(m.idx + i) % m.options.length]!;
         const wait = 200 + ((i * 137) % Math.max(1, QUESTION_MS - 1500));
         setTimeout(() => void answers.publish('answer', { idx: m.idx, choice }), wait);
       });
@@ -110,8 +123,18 @@ async function main(): Promise<void> {
   );
   console.log(`sim: ${players.length} players connected + present`);
 
-  // --- Host: the real core Quizmaster wired to Ably via the web adapters.
-  const hostClient = clientFor({ quizId: QUIZ_ID, role: 'host' }, true);
+  // Players-only: an external (e.g. browser) host drives the quiz; just answer.
+  if (process.env.PLAYERS_ONLY === '1') {
+    console.log(`sim: players-only — answering an external host's questions for 120s`);
+    await delay(120_000);
+    players.forEach((p) => p.close());
+    process.exit(0);
+  }
+
+  // --- Host: the real core Quizmaster, connected via the SAME connect() the
+  // browser /host uses — so this sim regression-tests the clientId handshake.
+  const { client: hostClient } = await connect({ quizId: QUIZ_ID, role: 'host' }, BASE);
+  await whenConnected(hostClient);
   const qm = new Quizmaster({
     quizId: QUIZ_ID,
     questions: QUESTIONS,
