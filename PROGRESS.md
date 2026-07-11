@@ -34,7 +34,7 @@
 
 - [x] S3.1 create flow (paste TSV/CSV, algo picker, links + QR)
 - [x] S3.2 lobby (presence roster)
-- [ ] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
+- [x] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
 - [ ] S3.4 podium + results
 - [ ] S3.5 recovery tests (host + player refresh) + docs/TESTING.md
 - [ ] S3.6 synthetic 300-player load test
@@ -71,6 +71,9 @@
 
 - **S1.3 (channel naming):** answers/agent channels renamed `quiz:{id}:answers` → `quiz-answers:{id}` and `quiz:{id}:agent:{slug}` → `quiz-agent:{id}:{slug}`. Rationale: Ably namespaces match the first colon-segment only, so per-namespace rules (batching on answers, appends on agent sessions, neither on main) require distinct prefixes. Same architecture; encoded in the protocol at S2.1. See [docs/ABLY-SETUP.md](docs/ABLY-SETUP.md).
 - **S1.3 (fairness clock):** VERIFIED empirically that under real server-side batching, per-message server timestamps quantize to the batch flush (≈2 distinct timestamps across 20 simultaneous messages), NOT preserved per-message. Decision per §B2.1: accept ≤200ms quantization (uniform → fair); keep batching on `quiz-answers` (needed for the quizmaster's 50 msg/s outbound limit at scale). Tunable to 100ms or off; revisit at S3.6.
+- **S3.3 (LiveObjects shape):** quiz state (phase/questionIdx/config/tallies/scoreboard) is stored as root-map JSON values with coalesced writes (`AblyLiveStore`), rather than a nested LiveCounter-per-option + LiveMap-per-player (§B2.3). The host is the sole writer and owns the authoritative counts; whole-value writes with a ~150ms flush keep object-op rate bounded under a burst and the reader still gets live updates. Revisit if a per-key CRDT is needed. LiveObjects requires channel MODES (`object_subscribe`/`object_publish`) to be requested explicitly — centralised in `getMainChannel`.
+- **S3.3 (screen role):** `/screen` authenticates as `player` (read-only caps) and reads its header from LiveObjects `config`, so the screen link works from any device without the host key.
+- **S3.3 (T₀ race, engine):** answers can reach the quizmaster before the question's server timestamp T₀ is captured from the publish echo. The engine now BUFFERS such answers per question (dedup locked in) and scores them the instant T₀ lands — fixing dropped answers (sim went 11/15 → 15/15). Unit-tested.
 - **S3.1 (host storage):** the full quiz definition is stored in `localStorage` (not the brief's `sessionStorage`) so the create tab, `/host`, and `/screen` on the same host machine share it and it survives a refresh for recovery. Still host-machine-only; never shared. See `apps/web/lib/quiz-storage.ts`.
 - **S0:** Spike omits the `temperature` param by default — newer Claude models (Opus 4.8 / Sonnet 5 / Fable 5) reject it (`400 … "temperature is deprecated for this model"`). Providers run at their default sampling; still settable via `SPIKE_TEMPERATURE` for providers that accept it. Carry forward to the S4 agent runner. Bumped `maxTokens` 300 → 400 after one truncated no-answer in a smoke run; full run then hit 100% valid-answer rate.
 

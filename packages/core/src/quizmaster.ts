@@ -82,6 +82,13 @@ export class Quizmaster {
   private readonly log: AnswerLogEntry[] = [];
   private tally: Record<Choice, number> = { A: 0, B: 0, C: 0, D: 0 };
   private answeredThisQuestion = new Set<string>();
+  // Answers that arrive before T₀ is captured (the publish-echo hasn't returned
+  // yet) are held here per question and scored the moment T₀ lands — so a fast
+  // answer is never dropped by that race.
+  private readonly pendingByIdx = new Map<
+    number,
+    { clientId: string; choice: Choice; serverTs: number; live: boolean }[]
+  >();
 
   constructor(deps: QuizmasterDeps) {
     this.deps = deps;
@@ -126,6 +133,13 @@ export class Quizmaster {
     });
     this.t0ByIdx.set(idx, serverTs);
     this.deps.store.setPhase('asking', idx);
+
+    // Score any answers that raced ahead of T₀.
+    const buffered = this.pendingByIdx.get(idx);
+    if (buffered) {
+      this.pendingByIdx.delete(idx);
+      for (const b of buffered) this.scoreRecorded(b.clientId, idx, b.choice, b.serverTs, b.live);
+    }
   }
 
   async lock(): Promise<void> {
@@ -264,11 +278,30 @@ export class Quizmaster {
   ): void {
     const key = `${clientId}#${idx}`;
     if (this.answeredKeys.has(key)) return; // first answer per client per question
-    const t0 = this.t0ByIdx.get(idx);
-    const correctLetter = this.correctByIdx.get(idx);
-    if (t0 === undefined || correctLetter === undefined) return;
-    this.answeredKeys.add(key);
+    // We must know the question (correct letter) to score it at all.
+    if (this.correctByIdx.get(idx) === undefined) return;
+    this.answeredKeys.add(key); // first-answer-wins is locked in now, even if buffered
 
+    if (this.t0ByIdx.get(idx) === undefined) {
+      // T₀ not captured yet (publish-echo in flight) — buffer; askNext flushes it.
+      const list = this.pendingByIdx.get(idx) ?? [];
+      list.push({ clientId, choice, serverTs, live });
+      this.pendingByIdx.set(idx, list);
+      return;
+    }
+    this.scoreRecorded(clientId, idx, choice, serverTs, live);
+  }
+
+  /** Score one already-deduped answer (T₀ + correct letter known). */
+  private scoreRecorded(
+    clientId: string,
+    idx: number,
+    choice: Choice,
+    serverTs: number,
+    live: boolean,
+  ): void {
+    const t0 = this.t0ByIdx.get(idx)!;
+    const correctLetter = this.correctByIdx.get(idx)!;
     const limitMs = this.limitOf(idx);
     const elapsedMs = Math.max(0, serverTs - t0);
     const correct = choice === correctLetter;
@@ -332,6 +365,7 @@ export class Quizmaster {
     this.t0ByIdx.clear();
     this.correctByIdx.clear();
     this.answeredKeys.clear();
+    this.pendingByIdx.clear();
     this.scores.clear();
     this.streaks.clear();
     this.log.length = 0;

@@ -1,11 +1,13 @@
 'use client';
 
 import type { ReactNode } from 'react';
-
-import { useMemo, useState } from 'react';
+import { answersChannel, type Choice } from '@ably-quiz/core';
+import { useEffect, useMemo, useState } from 'react';
+import { AnswerButtons, QuestionCard } from '@/components/quiz';
 import { Lobby } from '@/components/Lobby';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useQuizId } from '@/hooks/useQuizId';
+import { useQuizState } from '@/hooks/useQuizState';
 import { getPlayerBaseId } from '@/lib/player';
 
 export default function PlayPage() {
@@ -16,10 +18,29 @@ export default function PlayPage() {
 
   const params = joined && quizId ? { quizId, role: 'player' as const, clientId: base } : null;
   const { conn, status, error } = useAbly(params);
+  const view = useQuizState(conn, quizId ?? '');
   const members = usePresence(conn, quizId ?? '', {
     name: nickname.trim() || 'Player',
     enter: joined,
   });
+
+  const [pick, setPick] = useState<{ idx: number; choice: Choice } | null>(null);
+  const currentIdx = view.question?.idx ?? -1;
+  useEffect(() => {
+    setPick((p) => (p && p.idx === currentIdx ? p : null));
+  }, [currentIdx]);
+
+  const me = conn ? view.scoreboard[conn.clientId] : undefined;
+
+  function submit(choice: Choice) {
+    if (!conn || !quizId || !view.question || view.phase !== 'asking') return;
+    if (pick) return; // first answer wins
+    setPick({ idx: view.question.idx, choice });
+    void conn.client.channels.get(answersChannel(quizId)).publish('answer', {
+      idx: view.question.idx,
+      choice,
+    });
+  }
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified. Scan the join QR code.</Centered>;
@@ -57,17 +78,72 @@ export default function PlayPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md px-5 py-10">
+    <main className="mx-auto max-w-md px-5 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <p className="text-xs tracking-widest text-neutral-500 uppercase">you're in as</p>
-          <p className="text-xl font-bold">{nickname.trim() || 'Player'}</p>
+          <p className="text-xs tracking-widest text-neutral-500 uppercase">
+            {nickname.trim() || 'Player'}
+          </p>
+          <p className="text-lg font-bold tabular-nums">{me?.score ?? 0} pts</p>
         </div>
         <StatusDot status={status} />
       </div>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
-      <p className="mb-4 text-neutral-400">Waiting for the host to start…</p>
-      <Lobby members={members} />
+
+      {view.phase === 'lobby' && (
+        <>
+          <p className="mb-4 text-neutral-400">Waiting for the host to start…</p>
+          <Lobby members={members} />
+        </>
+      )}
+
+      {(view.phase === 'asking' || view.phase === 'locked') && view.question && (
+        <div className="space-y-6">
+          <QuestionCard prompt={view.question.prompt} />
+          {view.phase === 'locked' ? (
+            <p className="text-center text-neutral-400">
+              Answers locked{pick ? ` — you picked ${pick.choice}` : ''}.
+            </p>
+          ) : (
+            <AnswerButtons
+              options={view.question.options}
+              picked={pick?.choice ?? null}
+              disabled={pick !== null}
+              onPick={submit}
+            />
+          )}
+          {pick && view.phase === 'asking' && (
+            <p className="text-center text-sm text-neutral-500">
+              Locked in {pick.choice}. Hold tight…
+            </p>
+          )}
+        </div>
+      )}
+
+      {view.phase === 'revealed' && view.question && (
+        <div className="space-y-4 text-center">
+          <QuestionCard prompt={view.question.prompt} />
+          {pick ? (
+            pick.choice === view.correct ? (
+              <p className="text-2xl font-bold text-emerald-400">✓ Correct!</p>
+            ) : (
+              <p className="text-2xl font-bold text-rose-400">
+                ✗ You picked {pick.choice} — correct was {view.correct}
+              </p>
+            )
+          ) : (
+            <p className="text-xl text-neutral-400">No answer — correct was {view.correct}</p>
+          )}
+          <p className="text-neutral-400">{me?.score ?? 0} pts total</p>
+        </div>
+      )}
+
+      {(view.phase === 'podium' || view.phase === 'analysis' || view.phase === 'done') && (
+        <div className="text-center">
+          <p className="text-2xl font-bold">That&apos;s a wrap!</p>
+          <p className="mt-2 text-neutral-400">{me?.score ?? 0} pts — see the big screen.</p>
+        </div>
+      )}
     </main>
   );
 }

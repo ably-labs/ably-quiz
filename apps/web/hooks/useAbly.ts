@@ -1,9 +1,10 @@
 'use client';
 
 import type * as Ably from 'ably';
-import { kindFromClientId, mainChannel, type Kind } from '@ably-quiz/core';
+import { kindFromClientId, type Kind } from '@ably-quiz/core';
 import { useEffect, useRef, useState } from 'react';
 import { connect, type ConnectParams, type Connection } from '@/lib/ably';
+import { getMainChannel } from '@/lib/quiz-live';
 
 export type ConnStatus = 'idle' | 'connecting' | 'connected' | 'failed';
 
@@ -71,7 +72,7 @@ export function usePresence(
 
   useEffect(() => {
     if (!conn) return;
-    const channel = conn.client.channels.get(mainChannel(quizId));
+    const channel = getMainChannel(conn.client, quizId, { write: false });
     let mounted = true;
 
     const toMember = (m: Ably.PresenceMessage): Member => ({

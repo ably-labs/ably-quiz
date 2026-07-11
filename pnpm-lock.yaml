@@ -139,6 +139,22 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
+  spikes/quiz-sim:
+    dependencies:
+      '@ably-quiz/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      ably:
+        specifier: ^2.24.0
+        version: 2.24.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
+    devDependencies:
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
+
 packages:
 
   '@ably/msgpack-js@0.4.1':

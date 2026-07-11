@@ -128,6 +128,40 @@ describe('quizmaster — question loop & scoring', () => {
   });
 });
 
+describe('quizmaster — T₀ race', () => {
+  it('buffers answers that arrive before T₀ is captured, then scores them', async () => {
+    const store = new MockStore();
+    let releaseT0: () => void = () => undefined;
+    const broadcaster: Broadcaster = {
+      publishControl: () =>
+        new Promise<number>((resolve) => {
+          releaseT0 = () => resolve(2_000_000);
+        }),
+    };
+    const qm = new Quizmaster({
+      quizId: 'dev',
+      questions: QUESTIONS,
+      config: CONFIG,
+      broadcaster,
+      store,
+      permute: IDENTITY,
+    });
+    qm.init();
+
+    const asking = qm.askNext(); // hangs awaiting T₀
+    // A fast answer arrives BEFORE T₀ lands — must be held, not dropped.
+    qm.ingest({ clientId: 'p:fast', data: { idx: 0, choice: 'A' }, serverTs: 2_000_500 });
+    expect(qm.getAnswerLog()).toHaveLength(0);
+
+    releaseT0();
+    await asking;
+
+    const log = qm.getAnswerLog();
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ clientId: 'p:fast', correct: true, elapsedMs: 500 });
+  });
+});
+
 describe('quizmaster — 300-answer burst (§B2 gate)', () => {
   it('scores a 300-answer burst correctly with no drops or double-counts', async () => {
     const { qm, broadcaster, store } = makeQuizmaster();

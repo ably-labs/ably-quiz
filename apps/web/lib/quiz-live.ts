@@ -1,0 +1,182 @@
+// Ably adapters that plug real Ably + LiveObjects into the tested core engine
+// (@ably-quiz/core Broadcaster / QuizStore). The core stays I/O-free; this is
+// the only place that touches the wire.
+
+import type * as Ably from 'ably';
+import {
+  answersChannel,
+  mainChannel,
+  type Broadcaster,
+  type Choice,
+  type ControlMessage,
+  type Phase,
+  type QuizConfig,
+  type QuizStore,
+  type ScoreboardEntry,
+  type Tallies,
+} from '@ably-quiz/core';
+
+const EMPTY_TALLIES: Tallies = { A: 0, B: 0, C: 0, D: 0 };
+
+// Minimal structural view of the LiveObjects root PathObject (the SDK's full
+// generic types are large; we only need set/get/subscribe over JSON values).
+interface LiveRoot {
+  set(key: string, value: unknown): Promise<void>;
+  get(key: string): { value(): unknown } | undefined;
+  subscribe(listener: () => void): unknown;
+}
+interface ObjectsChannel {
+  object: { get(): Promise<LiveRoot> };
+}
+
+function rootOf(channel: Ably.RealtimeChannel): Promise<LiveRoot> {
+  return (channel as unknown as ObjectsChannel).object.get();
+}
+
+/**
+ * Get the main channel with the channel MODES the operation needs. LiveObjects
+ * requires object modes to be requested explicitly (they're not in the default
+ * set), so every accessor of the main channel on a given client must use the
+ * SAME modes — hence this single helper. Readers get object-subscribe; the host
+ * additionally gets publish + object-publish.
+ */
+export function getMainChannel(
+  client: Ably.Realtime,
+  quizId: string,
+  opts: { write: boolean },
+): Ably.RealtimeChannel {
+  const modes: Ably.ChannelMode[] = [
+    'SUBSCRIBE',
+    'PRESENCE',
+    'PRESENCE_SUBSCRIBE',
+    'OBJECT_SUBSCRIBE',
+  ];
+  if (opts.write) modes.push('PUBLISH', 'OBJECT_PUBLISH');
+  return client.channels.get(mainChannel(quizId), { modes });
+}
+
+/**
+ * Publishes control on the main channel and resolves each publish with the
+ * message's authoritative Ably server timestamp (T₀). The host is the only
+ * control publisher and its own echoes arrive in publish order, so we match
+ * pending publishes to echoes FIFO.
+ */
+export class AblyBroadcaster implements Broadcaster {
+  private readonly channel: Ably.RealtimeChannel;
+  private readonly pending: ((serverTs: number) => void)[] = [];
+  private ready: Promise<unknown>;
+
+  constructor(client: Ably.Realtime, quizId: string) {
+    this.channel = getMainChannel(client, quizId, { write: true });
+    this.ready = this.channel.subscribe('control', (msg) => {
+      const resolve = this.pending.shift();
+      if (resolve) resolve(msg.timestamp ?? Date.now());
+    });
+  }
+
+  async publishControl(msg: ControlMessage): Promise<number> {
+    await this.ready;
+    const serverTs = new Promise<number>((resolve) => this.pending.push(resolve));
+    await this.channel.publish('control', msg);
+    return serverTs;
+  }
+}
+
+/**
+ * Writes quiz state to LiveObjects on the main channel. phase/config flush
+ * immediately (rare, important); tallies/scoreboard are coalesced on a short
+ * timer so a 300-answer burst becomes a handful of object ops, not hundreds.
+ */
+export class AblyLiveStore implements QuizStore {
+  private rootPromise: Promise<LiveRoot>;
+  private tallies: Tallies = { ...EMPTY_TALLIES };
+  private scoreboard: Record<string, ScoreboardEntry> = {};
+  private dirty = new Set<'tallies' | 'scoreboard'>();
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(
+    client: Ably.Realtime,
+    quizId: string,
+    private readonly flushMs = 150,
+  ) {
+    this.rootPromise = rootOf(getMainChannel(client, quizId, { write: true }));
+  }
+
+  setConfig(config: QuizConfig): void {
+    void this.write('config', config);
+  }
+
+  setPhase(phase: Phase, questionIdx: number): void {
+    void this.write('phase', phase);
+    void this.write('questionIdx', questionIdx);
+  }
+
+  resetTally(): void {
+    this.tallies = { ...EMPTY_TALLIES };
+    void this.write('tallies', this.tallies);
+  }
+
+  setTally(choice: Choice, count: number): void {
+    this.tallies = { ...this.tallies, [choice]: count };
+    this.markDirty('tallies');
+  }
+
+  setScoreboardEntry(clientId: string, entry: ScoreboardEntry): void {
+    this.scoreboard = { ...this.scoreboard, [clientId]: entry };
+    this.markDirty('scoreboard');
+  }
+
+  private markDirty(key: 'tallies' | 'scoreboard'): void {
+    this.dirty.add(key);
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null;
+      const keys = [...this.dirty];
+      this.dirty.clear();
+      for (const k of keys) void this.write(k, k === 'tallies' ? this.tallies : this.scoreboard);
+    }, this.flushMs);
+  }
+
+  private async write(key: string, value: unknown): Promise<void> {
+    const root = await this.rootPromise;
+    await root.set(key, value);
+  }
+}
+
+// --- Reader side (screen / play): live quiz state from LiveObjects ----------
+export type LiveQuizState = {
+  phase: Phase;
+  questionIdx: number;
+  config: QuizConfig | null;
+  tallies: Tallies;
+  scoreboard: Record<string, ScoreboardEntry>;
+};
+
+const INITIAL_STATE: LiveQuizState = {
+  phase: 'lobby',
+  questionIdx: -1,
+  config: null,
+  tallies: { ...EMPTY_TALLIES },
+  scoreboard: {},
+};
+
+/** Subscribe to the LiveObjects-backed quiz state; calls back with the full
+ *  state on every change (and once immediately). Returns an unsubscribe fn. */
+export async function subscribeQuizState(
+  channel: Ably.RealtimeChannel,
+  onState: (state: LiveQuizState) => void,
+): Promise<() => void> {
+  const root = await rootOf(channel);
+  const read = (): LiveQuizState => ({
+    phase: (root.get('phase')?.value() as Phase) ?? 'lobby',
+    questionIdx: (root.get('questionIdx')?.value() as number) ?? -1,
+    config: (root.get('config')?.value() as QuizConfig) ?? null,
+    tallies: (root.get('tallies')?.value() as Tallies) ?? { ...EMPTY_TALLIES },
+    scoreboard: (root.get('scoreboard')?.value() as Record<string, ScoreboardEntry>) ?? {},
+  });
+  root.subscribe(() => onState(read()));
+  onState(read());
+  return () => undefined;
+}
+
+export { answersChannel, mainChannel, INITIAL_STATE };
