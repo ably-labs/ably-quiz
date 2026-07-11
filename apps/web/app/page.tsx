@@ -24,6 +24,69 @@ import { generateQuizId } from '@/lib/slug';
 
 const START_ROWS = 3;
 
+// Dev-only convenience: a handful of ready-made questions so manual testing on
+// localhost doesn't require typing a quiz every time (see the "load samples" link).
+const SAMPLE_ROWS: GridRow[] = [
+  {
+    question: 'What is the chemical symbol for gold?',
+    correct: 'Au',
+    wrong1: 'Ag',
+    wrong2: 'Gd',
+    wrong3: 'Go',
+    limit: '',
+    category: 'Science',
+  },
+  {
+    question: 'How many continents are there on Earth?',
+    correct: 'Seven',
+    wrong1: 'Five',
+    wrong2: 'Six',
+    wrong3: 'Eight',
+    limit: '',
+    category: 'Geography',
+  },
+  {
+    question: 'Which Ably product is for multiplayer collaboration?',
+    correct: 'Spaces',
+    wrong1: 'Pub/Sub',
+    wrong2: 'Chat',
+    wrong3: 'LiveSync',
+    limit: '',
+    category: 'Ably',
+  },
+  {
+    question: 'What does “AIT” stand for at Ably?',
+    correct: 'AI Transport',
+    wrong1: 'Ably Internal Tooling',
+    wrong2: 'Async Integration Tier',
+    wrong3: 'Adaptive Ingest',
+    limit: '',
+    category: 'Ably',
+  },
+  {
+    question: 'Which planet is the largest in our solar system?',
+    correct: 'Jupiter',
+    wrong1: 'Saturn',
+    wrong2: 'Neptune',
+    wrong3: 'Earth',
+    limit: '',
+    category: 'Science',
+  },
+];
+
+/** True on localhost / .local / .test hosts — gates dev-only helpers. */
+function isLocalHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '[::1]' ||
+    h.endsWith('.local') ||
+    h.endsWith('.test')
+  );
+}
+
 /** Validate each non-empty row on its own so errors map to visible grid rows.
  *  A blank Time cell falls back to the quiz-wide default. */
 function validate(
@@ -59,6 +122,8 @@ export default function CreatePage() {
   const [algoId, setAlgoId] = useState(DEFAULT_ALGO_ID);
   const [streakEnabled, setStreakEnabled] = useState(false);
   const [created, setCreated] = useState<{ quiz: StoredQuiz; origin: string } | null>(null);
+  const [devLike, setDevLike] = useState(false);
+  useEffect(() => setDevLike(isLocalHost()), []);
 
   const { questions, errors, badRows } = useMemo(
     () => validate(rows, defaultLimitS),
@@ -96,7 +161,19 @@ export default function CreatePage() {
 
       <section className="mb-8">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-neutral-300">Questions</h2>
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-sm font-semibold text-neutral-300">Questions</h2>
+            {devLike && (
+              <button
+                type="button"
+                onClick={() => setRows([...SAMPLE_ROWS.map((r) => ({ ...r })), emptyRow()])}
+                className="text-xs text-ably hover:underline"
+                title="Dev only — fill the grid with sample questions"
+              >
+                load samples
+              </button>
+            )}
+          </div>
           <span className="text-sm text-neutral-500">
             {questions.length} valid{errors.length > 0 ? ` · ${errors.length} to fix` : ''}
           </span>

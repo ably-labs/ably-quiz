@@ -87,6 +87,8 @@ _(none yet)_
 - **Question grid → `react-datasheet-grid`** (lightweight dedicated library, dark-themed) instead of a custom grid — native spreadsheet copy/paste.
 - **Create UX:** quiz-wide "default time per question"; Time/Category marked optional ("leave blank for default"; Category = a screen label). Scoring blurbs reframed as "pick this if…".
 - **Bug fixed (host clientId):** `connect()` set the client's clientId from a first token fetch while `authCallback` fetched again — for the host (no clientId sent) the server randomised each fetch → Ably's "invalid clientId for credentials". Now a stable clientId base is pinned up front. `spikes/quiz-sim` host now connects via the real `connect()` so this is regression-tested; verified in a real browser end-to-end (host connects, 5 live players, both questions fan-in, lock/reveal cycle).
+- **Dev-only "load samples" link.** On localhost/`.local`/`.test` hosts only, the create page shows a "load samples" link that fills the grid with 5 ready-made questions, so manual testing doesn't need retyping a quiz each time. Hostname-gated; never rendered in prod.
+- **Grid add-row footer dark-themed.** `react-datasheet-grid`'s `.dsg-add-row` shipped as a light strip with black text; overridden to canvas/ink to match the rest of the grid.
 
 ## Backlog / follow-ups (from Matt, beyond the original brief)
 

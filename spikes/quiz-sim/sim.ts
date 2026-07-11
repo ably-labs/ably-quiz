@@ -66,7 +66,9 @@ function whenConnected(client: Ably.Realtime): Promise<void> {
     if (client.connection.state === 'connected') return resolve();
     client.connection.once('connected', () => resolve());
     client.connection.once('failed', () =>
-      reject(new Error(`connection failed: ${client.connection.errorReason?.message ?? 'unknown'}`)),
+      reject(
+        new Error(`connection failed: ${client.connection.errorReason?.message ?? 'unknown'}`),
+      ),
     );
   });
 }

@@ -45,7 +45,12 @@ body {
   color: var(--color-ink);
 }
 /* The add-rows footer (button + count input) sits outside .dsg-container and is
-   otherwise browser-default (light); theme it via element selectors. */
+   otherwise browser-default (light strip, black text); theme it too. */
+.dsg-dark .dsg-add-row {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  border-top: solid 1px #262626;
+}
 .dsg-dark button {
   background: transparent;
   color: var(--color-ink);
