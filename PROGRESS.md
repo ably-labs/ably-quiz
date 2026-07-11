@@ -33,7 +33,7 @@
 ## S3 — Humans-only playable
 
 - [x] S3.1 create flow (paste TSV/CSV, algo picker, links + QR)
-- [ ] S3.2 lobby (presence roster)
+- [x] S3.2 lobby (presence roster)
 - [ ] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
 - [ ] S3.4 podium + results
 - [ ] S3.5 recovery tests (host + player refresh) + docs/TESTING.md

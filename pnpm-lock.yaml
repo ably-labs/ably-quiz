@@ -44,6 +44,9 @@ importers:
       '@ably-quiz/core':
         specifier: workspace:*
         version: link:../../packages/core
+      ably:
+        specifier: ^2.24.0
+        version: 2.24.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       next:
         specifier: ^16.2.10
         version: 16.2.10(@babel/core@7.29.7)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

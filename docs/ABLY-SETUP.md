@@ -28,9 +28,15 @@ for answers but OFF for control — they use **distinct prefixes**:
 > `quiz-agent:{id}:{slug}`. Same architecture; encoded in the protocol at S2.1.
 
 Persistence is on everywhere so channel **history is the durable audit log**
-(recovery + counterfactual scoring, §B2.1/§B2.3). **LiveObjects** on `quiz:{id}`
-may also need app-level enablement — to be confirmed when LiveObjects is wired
-(S2.4/S3), not required for S1.
+(recovery + counterfactual scoring, §B2.1/§B2.3).
+
+**LiveObjects — VERIFIED enabled** on app `YOUR_APP_ID` (probed live in S3: attach with
+`OBJECT_SUBSCRIBE`/`OBJECT_PUBLISH` modes + `root.set()` succeeded). ably-js
+`2.24` API: `new Ably.Realtime({ …, plugins: { LiveObjects } })` (from
+`ably/liveobjects`), root via `await channel.object.get()` → a `PathObject`;
+`.set(key, value)` / `.get(key)` / `.value()`, `LiveCounter.create()` +
+`.increment()`. Requires the `object-subscribe` / `object-publish` capabilities
+(already in the §B2.5 matrix).
 
 ## Fairness clock under batching — VERIFIED (§B2.1)
 
