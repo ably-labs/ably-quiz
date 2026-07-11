@@ -25,8 +25,10 @@
 - [x] S2.1 protocol schemas (zod) + types
 - [x] S2.2 quiz state machine
 - [x] S2.3 scoring algorithms + counterfactual recompute + tests
-- [ ] S2.4 quizmaster engine (answers, dedupe, window, LiveObjects, recovery)
-- [ ] **GATE: engine e2e under test incl. 300-answer burst**
+- [x] S2.4 quizmaster engine (answers, dedupe, window, LiveObjects, recovery)
+- [x] **GATE: engine e2e under test incl. 300-answer burst**
+
+**Stage note (S2):** Pure, fully-tested core engine (54 tests): protocol (zod, single source of truth), state machine, scoring + counterfactual (recompute === live invariant proven), and the quizmaster — Ably-agnostic via injected `Broadcaster`/`QuizStore`, answers pushed via `ingest`. Gate met: e2e over a mock transport incl. a 300-answer burst (zero drops/double-counts, correct tallies + standings) and recovery-from-history (completed quiz + in-flight question, correct letter re-derived from published options). Ably wiring of these interfaces lands in S3.
 
 ## S3 — Humans-only playable
 
