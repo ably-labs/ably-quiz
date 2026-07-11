@@ -29,7 +29,6 @@ const PLAYERS = intEnv('PLAYERS', 5);
 const QUESTION_MS = intEnv('QUESTION_MS', 8000);
 const REVEAL_MS = intEnv('REVEAL_MS', 3000);
 const CORRECT_RATE = floatEnv('CORRECT_RATE', 0.7);
-const HOST_KEY = process.env.HOST_KEY ?? '';
 const LETTERS: Choice[] = ['A', 'B', 'C', 'D'];
 
 const QUESTIONS: QuestionDef[] = [
@@ -84,7 +83,6 @@ function clientFor(body: Record<string, unknown>, withObjects: boolean): Ably.Re
 }
 
 async function main(): Promise<void> {
-  if (!HOST_KEY) throw new Error('HOST_KEY missing from .env.local');
   console.log(`sim: quiz=${QUIZ_ID} players=${PLAYERS} base=${BASE}`);
 
   // --- Players: subscribe control, answer each question after a jittered delay.
@@ -113,7 +111,7 @@ async function main(): Promise<void> {
   console.log(`sim: ${players.length} players connected + present`);
 
   // --- Host: the real core Quizmaster wired to Ably via the web adapters.
-  const hostClient = clientFor({ quizId: QUIZ_ID, role: 'host', hostKey: HOST_KEY }, true);
+  const hostClient = clientFor({ quizId: QUIZ_ID, role: 'host' }, true);
   const qm = new Quizmaster({
     quizId: QUIZ_ID,
     questions: QUESTIONS,

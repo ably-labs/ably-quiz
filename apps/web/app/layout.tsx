@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+// Grid base styles first, so our dark overrides in globals.css win.
+import 'react-datasheet-grid/dist/style.css';
 import './globals.css';
 
 export const metadata: Metadata = {

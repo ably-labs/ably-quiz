@@ -13,8 +13,6 @@ export type StoredQuiz = {
   createdAt: number;
   questions: QuestionDef[];
   config: QuizConfig;
-  /** Host-machine only — proves host/agent role to /api/ably-auth. Never shared. */
-  hostKey: string;
 };
 
 const keyFor = (quizId: string) => `ably-quiz:${quizId}`;

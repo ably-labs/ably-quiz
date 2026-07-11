@@ -1,8 +1,12 @@
-// Role authorization for /api/ably-auth (§B2.5). Pure and server-side: decides
-// role, clientId, and capability from a request + the HOST_KEY env. Kept
-// separate from the route handler so it is unit-testable without Next.
+// Role authorization for /api/ably-auth (§B2.5, revised). Pure and server-side:
+// decides role, clientId, and capability from a request. Kept separate from the
+// route handler so it is unit-testable without Next.
+//
+// No host secret: this is a free-tier demo on an unguessable quiz id, and Ably
+// caps the blast radius, so hosting is open (Matt, 2026-07-11 — see PROGRESS
+// Deviations). Roles still fix the clientId prefix + capabilities.
 
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   buildCapability,
   kindFromClientId,
@@ -17,7 +21,6 @@ export type AuthRequestBody = {
   role?: unknown;
   clientId?: unknown;
   slug?: unknown;
-  hostKey?: unknown;
 };
 
 export type AuthDecision =
@@ -26,33 +29,13 @@ export type AuthDecision =
 
 const ID = /^[a-zA-Z0-9_-]{1,64}$/;
 
-function constantTimeEquals(a: string, b: string): boolean {
-  const ab = Buffer.from(a, 'utf8');
-  const bb = Buffer.from(b, 'utf8');
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
-}
-
-/**
- * Player is open (honour system, §A1). Host and agent are privileged and gated
- * by HOST_KEY — agents are booted only by the trusted agent host, which holds
- * the key. The role dictates the clientId prefix, so no client can self-elevate.
- */
-export function authorize(body: AuthRequestBody, hostKey: string | undefined): AuthDecision {
+export function authorize(body: AuthRequestBody): AuthDecision {
   const quizId = typeof body.quizId === 'string' ? body.quizId.trim() : '';
   if (!ID.test(quizId)) return { ok: false, status: 400, error: 'invalid or missing quizId' };
 
   const role = body.role;
   if (role !== 'player' && role !== 'host' && role !== 'agent') {
     return { ok: false, status: 400, error: 'invalid role' };
-  }
-
-  if (role === 'host' || role === 'agent') {
-    if (!hostKey) return { ok: false, status: 500, error: 'HOST_KEY not configured' };
-    const provided = typeof body.hostKey === 'string' ? body.hostKey : '';
-    if (!constantTimeEquals(provided, hostKey)) {
-      return { ok: false, status: 403, error: 'forbidden' };
-    }
   }
 
   let base: string;

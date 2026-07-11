@@ -2,8 +2,8 @@
 // (§B2.5). The Ably API key secret stays server-side; the client uses the
 // returned token (e.g. via authCallback).
 //
-// Body: { quizId, role: 'player'|'host'|'agent', clientId?, slug?, hostKey? }
-// host/agent require the correct hostKey. Returns { token, clientId, kind }.
+// Body: { quizId, role: 'player'|'host'|'agent', clientId?, slug? }
+// No secret — hosting is open (free-tier demo). Returns { token, clientId, kind }.
 
 import { authorize, type AuthRequestBody } from '@/lib/authorize';
 import { createAblyJwt, splitApiKey } from '@/lib/ably-jwt';
@@ -21,7 +21,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  const decision = authorize(body, process.env.HOST_KEY);
+  const decision = authorize(body);
   if (!decision.ok) {
     return Response.json({ error: decision.error }, { status: decision.status });
   }

@@ -11,10 +11,7 @@ import { loadQuiz } from '@/lib/quiz-storage';
 export default function HostPage() {
   const quizId = useQuizId();
   const quiz = useMemo(() => (typeof quizId === 'string' ? loadQuiz(quizId) : null), [quizId]);
-  const params =
-    typeof quizId === 'string' && quiz
-      ? { quizId, role: 'host' as const, hostKey: quiz.hostKey }
-      : null;
+  const params = typeof quizId === 'string' && quiz ? { quizId, role: 'host' as const } : null;
   const { status, conn, error } = useAbly(params);
   const { state, controls, answersIn, busy, members } = useHostQuiz(conn, quiz);
 

@@ -14,8 +14,6 @@ export type ConnectParams = {
   clientId?: string;
   /** Agent slug (role=agent). */
   slug?: string;
-  /** Host/agent secret (role=host|agent). */
-  hostKey?: string;
 };
 
 export type TokenResponse = { token: string; clientId: string; kind: Kind };

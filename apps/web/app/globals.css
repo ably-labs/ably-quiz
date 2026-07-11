@@ -26,3 +26,41 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* react-datasheet-grid — dark theme. Scoped under .dsg-dark so it wins over the
+   library's light defaults regardless of CSS bundle order. */
+.dsg-dark .dsg-container {
+  --dsg-border-color: #262626;
+  --dsg-cell-background-color: #0a0a0b;
+  --dsg-cell-disabled-background-color: #141414;
+  --dsg-header-text-color: #737373;
+  --dsg-header-active-text-color: var(--color-ink);
+  --dsg-selection-border-color: var(--color-ably);
+  --dsg-selection-background-color: rgba(255, 84, 22, 0.08);
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border-radius: 0.5rem;
+}
+.dsg-dark .dsg-input {
+  color: var(--color-ink);
+}
+/* The add-rows footer (button + count input) sits outside .dsg-container and is
+   otherwise browser-default (light); theme it via element selectors. */
+.dsg-dark button {
+  background: transparent;
+  color: var(--color-ink);
+  border: solid 1px #262626;
+  border-radius: 0.375rem;
+}
+.dsg-dark button:hover {
+  border-color: #404040;
+}
+.dsg-dark input[type='number'] {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  border: solid 1px #262626;
+  border-radius: 0.375rem;
+}
+.dsg-dark .dsg-row.dsg-bad-row .dsg-cell {
+  background: rgba(220, 38, 38, 0.14);
+}

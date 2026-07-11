@@ -13,14 +13,8 @@ import { config as loadEnv } from 'dotenv';
 
 loadEnv({ path: fileURLToPath(new URL('../../.env.local', import.meta.url)) });
 
-const HOST_KEY = process.env.HOST_KEY;
 const BASE = process.env.AUTH_BASE_URL ?? 'http://127.0.0.1:3100';
 const QUIZ = 'dev';
-
-if (!HOST_KEY) {
-  console.error('HOST_KEY missing from repo-root .env.local');
-  process.exit(1);
-}
 
 type TokenResp = { token: string; clientId: string; kind: string };
 
@@ -58,19 +52,15 @@ async function subscribeOnce(
 }
 
 async function main(): Promise<void> {
-  // 1. Issue tokens from the real endpoint.
-  const host = await getToken({ quizId: QUIZ, role: 'host', hostKey: HOST_KEY });
+  // 1. Issue tokens from the real endpoint (hosting is open — no secret).
+  const host = await getToken({ quizId: QUIZ, role: 'host' });
   const player = await getToken({ quizId: QUIZ, role: 'player', clientId: 'e2e-player' });
-  check('host token has h: clientId', host.clientId.startsWith('h:'), host.clientId);
+  check(
+    'host token has h: clientId (no secret needed)',
+    host.clientId.startsWith('h:'),
+    host.clientId,
+  );
   check('player token has p: clientId', player.clientId === 'p:e2e-player', player.clientId);
-
-  // Endpoint gating: a player cannot mint a host token.
-  try {
-    await getToken({ quizId: QUIZ, role: 'host' });
-    check('host requires HOST_KEY', false, 'no error');
-  } catch {
-    check('host requires HOST_KEY (403)', true);
-  }
 
   const hostClient = client(host.token);
   const playerClient = client(player.token);

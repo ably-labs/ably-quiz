@@ -1,40 +1,82 @@
 'use client';
 
-import { DEFAULT_ALGO_ID, listAlgos, parseQuestions, type QuizConfig } from '@ably-quiz/core';
+import {
+  DEFAULT_ALGO_ID,
+  LIMIT_DEFAULT_S,
+  LIMIT_MAX_S,
+  LIMIT_MIN_S,
+  listAlgos,
+  parseQuestions,
+  type QuestionDef,
+  type QuizConfig,
+} from '@ably-quiz/core';
 import QRCode from 'qrcode';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  emptyRow,
+  isRowEmpty,
+  QuestionGrid,
+  rowCells,
+  type GridRow,
+} from '@/components/QuestionGrid';
 import { saveQuiz, type StoredQuiz } from '@/lib/quiz-storage';
 import { generateQuizId } from '@/lib/slug';
 
-const TEMPLATE_HINT = 'question\tcorrect\twrong1\twrong2\twrong3\ttime_limit_s\tcategory';
+const START_ROWS = 3;
+
+/** Validate each non-empty row on its own so errors map to visible grid rows.
+ *  A blank Time cell falls back to the quiz-wide default. */
+function validate(
+  rows: GridRow[],
+  defaultLimitS: number,
+): {
+  questions: QuestionDef[];
+  errors: string[];
+  badRows: Set<number>;
+} {
+  const questions: QuestionDef[] = [];
+  const errors: string[] = [];
+  const badRows = new Set<number>();
+  rows.forEach((row, i) => {
+    if (isRowEmpty(row)) return;
+    const cells = rowCells(row);
+    const res = parseQuestions(cells.join('\t'));
+    if (res.questions.length === 1 && res.errors.length === 0) {
+      const question = res.questions[0]!;
+      if (cells[5]!.trim() === '') question.limitMs = defaultLimitS * 1000; // blank → quiz default
+      questions.push(question);
+    } else {
+      badRows.add(i);
+      errors.push(`Row ${i + 1}: ${res.errors[0]?.replace(/^Row \d+:\s*/, '') ?? 'invalid'}`);
+    }
+  });
+  return { questions, errors, badRows };
+}
 
 export default function CreatePage() {
-  const [text, setText] = useState('');
+  const [rows, setRows] = useState<GridRow[]>(() => Array.from({ length: START_ROWS }, emptyRow));
+  const [defaultLimitS, setDefaultLimitS] = useState(LIMIT_DEFAULT_S);
   const [algoId, setAlgoId] = useState(DEFAULT_ALGO_ID);
   const [streakEnabled, setStreakEnabled] = useState(false);
-  const [hostKey, setHostKey] = useState('');
   const [created, setCreated] = useState<{ quiz: StoredQuiz; origin: string } | null>(null);
 
-  const parsed = useMemo(() => parseQuestions(text), [text]);
+  const { questions, errors, badRows } = useMemo(
+    () => validate(rows, defaultLimitS),
+    [rows, defaultLimitS],
+  );
   const algos = useMemo(() => listAlgos(), []);
-  const canCreate = parsed.questions.length > 0 && hostKey.trim().length > 0;
+  const canCreate = questions.length > 0;
 
   function handleCreate() {
     if (!canCreate) return;
     const quizId = generateQuizId();
     const config: QuizConfig = {
       scoringAlgoId: algoId,
-      questionCount: parsed.questions.length,
-      defaultLimitMs: 20_000,
+      questionCount: questions.length,
+      defaultLimitMs: defaultLimitS * 1000,
       streakEnabled,
     };
-    const quiz: StoredQuiz = {
-      quizId,
-      createdAt: Date.now(),
-      questions: parsed.questions,
-      config,
-      hostKey: hostKey.trim(),
-    };
+    const quiz: StoredQuiz = { quizId, createdAt: Date.now(), questions, config };
     saveQuiz(quiz);
     setCreated({ quiz, origin: window.location.origin });
   }
@@ -42,80 +84,62 @@ export default function CreatePage() {
   if (created) return <CreatedView quiz={created.quiz} origin={created.origin} />;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
+    <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8">
         <p className="text-xs font-medium tracking-[0.3em] text-ably uppercase">the Ably Quiz</p>
         <h1 className="text-4xl font-extrabold tracking-tight">Create a quiz</h1>
         <p className="mt-2 text-neutral-400">
-          Paste rows from the spreadsheet template. Columns:{' '}
-          <code className="rounded bg-neutral-800 px-1 py-0.5 text-xs">{TEMPLATE_HINT}</code>
+          Type your questions, or copy a block straight out of a spreadsheet and paste it into the
+          grid.
         </p>
       </header>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={8}
-        placeholder="Paste your questions here (TSV from Google Sheets, or CSV)…"
-        className="w-full resize-y rounded-lg border border-neutral-800 bg-neutral-900 p-4 font-mono text-sm text-ink outline-none focus:border-ably"
-      />
+      <section className="mb-8">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-300">Questions</h2>
+          <span className="text-sm text-neutral-500">
+            {questions.length} valid{errors.length > 0 ? ` · ${errors.length} to fix` : ''}
+          </span>
+        </div>
+        <QuestionGrid rows={rows} onChange={setRows} badRows={badRows} />
+        {errors.length > 0 && (
+          <ul className="mt-3 space-y-1 rounded-lg border border-red-900/60 bg-red-950/30 p-3 text-sm text-red-300">
+            {errors.map((e, i) => (
+              <li key={i}>⚠️ {e}</li>
+            ))}
+          </ul>
+        )}
 
-      {text.trim() && (
-        <section className="mt-6">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-300">
-              Preview — {parsed.questions.length} question{parsed.questions.length === 1 ? '' : 's'}
-            </h2>
-          </div>
-          {parsed.errors.length > 0 && (
-            <ul className="mb-4 space-y-1 rounded-lg border border-red-900/60 bg-red-950/30 p-3 text-sm text-red-300">
-              {parsed.errors.map((e, i) => (
-                <li key={i}>⚠️ {e}</li>
-              ))}
-            </ul>
-          )}
-          {parsed.questions.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-neutral-800">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-neutral-900 text-neutral-400">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">#</th>
-                    <th className="px-3 py-2 font-medium">Question</th>
-                    <th className="px-3 py-2 font-medium">Options (✓ correct)</th>
-                    <th className="px-3 py-2 font-medium">Limit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {parsed.questions.map((q, i) => (
-                    <tr key={i} className="border-t border-neutral-800/60 align-top">
-                      <td className="px-3 py-2 text-neutral-500">{i + 1}</td>
-                      <td className="px-3 py-2">{q.prompt}</td>
-                      <td className="px-3 py-2">
-                        {q.options.map((o, oi) => (
-                          <span
-                            key={oi}
-                            className={
-                              oi === q.correctIndex
-                                ? 'mr-2 rounded bg-ably/15 px-1.5 py-0.5 text-ably'
-                                : 'mr-2 text-neutral-400'
-                            }
-                          >
-                            {oi === q.correctIndex ? '✓ ' : ''}
-                            {o}
-                          </span>
-                        ))}
-                      </td>
-                      <td className="px-3 py-2 text-neutral-500">{q.limitMs / 1000}s</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-neutral-400">
+          <label htmlFor="defaultLimit">Default time per question</label>
+          <input
+            id="defaultLimit"
+            type="number"
+            min={LIMIT_MIN_S}
+            max={LIMIT_MAX_S}
+            value={defaultLimitS}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              setDefaultLimitS(
+                Number.isFinite(n)
+                  ? Math.min(LIMIT_MAX_S, Math.max(LIMIT_MIN_S, n))
+                  : LIMIT_DEFAULT_S,
+              );
+            }}
+            className="w-16 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-center text-ink outline-none focus:border-ably"
+          />
+          <span>seconds</span>
+        </div>
+        <p className="mt-2 max-w-2xl text-sm text-neutral-500">
+          <span className="text-neutral-300">Time (s)</span> and{' '}
+          <span className="text-neutral-300">Category</span> are optional. Leave <b>Time</b> blank
+          to use the default above (or set {LIMIT_MIN_S}–{LIMIT_MAX_S}s on a row). <b>Category</b>{' '}
+          is a short label shown above the question on the big screen — e.g. “Science” — purely for
+          flavour.
+        </p>
+      </section>
 
-      <fieldset className="mt-8">
+      <fieldset className="mb-8">
         <legend className="text-sm font-semibold text-neutral-300">Scoring</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           {algos.map((a) => (
@@ -150,28 +174,11 @@ export default function CreatePage() {
         </label>
       </fieldset>
 
-      <div className="mt-8">
-        <label className="block text-sm font-semibold text-neutral-300" htmlFor="hostKey">
-          Host key
-        </label>
-        <p className="mb-2 text-xs text-neutral-500">
-          The quiz-creation secret. Stays on this machine — never put in a shared link.
-        </p>
-        <input
-          id="hostKey"
-          type="password"
-          value={hostKey}
-          onChange={(e) => setHostKey(e.target.value)}
-          placeholder="HOST_KEY"
-          className="w-full max-w-sm rounded-lg border border-neutral-800 bg-neutral-900 p-3 text-sm outline-none focus:border-ably"
-        />
-      </div>
-
       <button
         type="button"
         onClick={handleCreate}
         disabled={!canCreate}
-        className="mt-8 rounded-lg bg-ably px-6 py-3 font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-lg bg-ably px-6 py-3 font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-40"
       >
         Create quiz
       </button>

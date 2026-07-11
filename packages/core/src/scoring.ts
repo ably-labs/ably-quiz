@@ -37,7 +37,7 @@ export const SCORING_ALGOS: Record<string, ScoringAlgo> = {
   classic: {
     id: 'classic',
     label: 'Classic',
-    blurb: "Kahoot's formula — accuracy with a speed bonus.",
+    blurb: 'Right answers score, faster ones score more. Pick this for the usual quiz balance.',
     score: (a) => {
       if (!a.correct) return 0;
       const r = windowRatio(a);
@@ -47,7 +47,7 @@ export const SCORING_ALGOS: Record<string, ScoringAlgo> = {
   'fastest-finger': {
     id: 'fastest-finger',
     label: 'Fastest finger',
-    blurb: 'Speed premium — instant ≈ 1000, buzzer-beater ≈ 110.',
+    blurb: 'Speed dominates; a split-second matters. Pick this for frantic, buzzer-race energy.',
     score: (a) => {
       if (!a.correct) return 0;
       const r = windowRatio(a);
@@ -57,7 +57,8 @@ export const SCORING_ALGOS: Record<string, ScoringAlgo> = {
   steady: {
     id: 'steady',
     label: 'Steady',
-    blurb: 'Pure accuracy — 1000 flat; cumulative time breaks ties.',
+    blurb:
+      "Only accuracy counts; time just breaks ties. Pick this so careful thinkers aren't punished.",
     score: (a) => {
       if (!a.correct) return 0;
       return windowRatio(a) === null ? 0 : 1000;

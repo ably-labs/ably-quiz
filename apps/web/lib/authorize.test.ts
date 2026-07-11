@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { authorize } from './authorize';
 
-const HOST_KEY = 'host-secret-123';
-
-describe('authorize (§B2.5 role gating)', () => {
-  it('player is open (no hostKey) and gets a p: clientId', () => {
-    const d = authorize({ quizId: 'q1', role: 'player', clientId: 'Priya' }, HOST_KEY);
+describe('authorize (§B2.5, no host secret)', () => {
+  it('player: open, p: clientId, publish-answers only', () => {
+    const d = authorize({ quizId: 'q1', role: 'player', clientId: 'Priya' });
     expect(d.ok).toBe(true);
     if (d.ok) {
       expect(d.clientId).toBe('p:Priya');
@@ -14,33 +12,18 @@ describe('authorize (§B2.5 role gating)', () => {
     }
   });
 
-  it('host requires the correct hostKey', () => {
-    expect(authorize({ quizId: 'q1', role: 'host' }, HOST_KEY)).toMatchObject({
-      ok: false,
-      status: 403,
-    });
-    expect(authorize({ quizId: 'q1', role: 'host', hostKey: 'nope' }, HOST_KEY)).toMatchObject({
-      ok: false,
-      status: 403,
-    });
-    const d = authorize({ quizId: 'q1', role: 'host', hostKey: HOST_KEY }, HOST_KEY);
+  it('host: allowed with no secret, h: clientId, full caps', () => {
+    const d = authorize({ quizId: 'q1', role: 'host' });
     expect(d.ok).toBe(true);
-    if (d.ok) expect(d.clientId.startsWith('h:')).toBe(true);
+    if (d.ok) {
+      expect(d.clientId.startsWith('h:')).toBe(true);
+      expect(d.capability['quiz:q1']).toEqual(['*']);
+    }
   });
 
-  it('agent requires hostKey + slug and is scoped to its own session', () => {
-    expect(authorize({ quizId: 'q1', role: 'agent', slug: 'matt-fable' }, HOST_KEY)).toMatchObject({
-      ok: false,
-      status: 403,
-    });
-    expect(authorize({ quizId: 'q1', role: 'agent', hostKey: HOST_KEY }, HOST_KEY)).toMatchObject({
-      ok: false,
-      status: 400,
-    });
-    const d = authorize(
-      { quizId: 'q1', role: 'agent', hostKey: HOST_KEY, slug: 'matt-fable' },
-      HOST_KEY,
-    );
+  it('agent: allowed with no secret but still needs a slug; scoped to its own session', () => {
+    expect(authorize({ quizId: 'q1', role: 'agent' })).toMatchObject({ ok: false, status: 400 });
+    const d = authorize({ quizId: 'q1', role: 'agent', slug: 'matt-fable' });
     expect(d.ok).toBe(true);
     if (d.ok) {
       expect(d.clientId).toBe('a:matt-fable');
@@ -50,21 +33,14 @@ describe('authorize (§B2.5 role gating)', () => {
   });
 
   it('rejects invalid quizId and role', () => {
-    expect(authorize({ role: 'player' }, HOST_KEY)).toMatchObject({ ok: false, status: 400 });
-    expect(authorize({ quizId: 'bad id!', role: 'player' }, HOST_KEY)).toMatchObject({
+    expect(authorize({ role: 'player' })).toMatchObject({ ok: false, status: 400 });
+    expect(authorize({ quizId: 'bad id!', role: 'player' })).toMatchObject({
       ok: false,
       status: 400,
     });
-    expect(authorize({ quizId: 'q1', role: 'spectator' }, HOST_KEY)).toMatchObject({
+    expect(authorize({ quizId: 'q1', role: 'spectator' })).toMatchObject({
       ok: false,
       status: 400,
-    });
-  });
-
-  it('fails closed when HOST_KEY is not configured', () => {
-    expect(authorize({ quizId: 'q1', role: 'host', hostKey: 'x' }, undefined)).toMatchObject({
-      ok: false,
-      status: 500,
     });
   });
 });

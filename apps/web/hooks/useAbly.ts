@@ -20,7 +20,7 @@ export function useAbly(params: ConnectParams | null): {
 
   // Depend on primitive fields, not object identity, to avoid reconnect churn.
   const key = params
-    ? `${params.quizId}|${params.role}|${params.clientId ?? ''}|${params.slug ?? ''}|${params.hostKey ?? ''}`
+    ? `${params.quizId}|${params.role}|${params.clientId ?? ''}|${params.slug ?? ''}`
     : null;
 
   useEffect(() => {

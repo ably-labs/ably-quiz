@@ -80,3 +80,12 @@
 ## Blocked
 
 _(none yet)_
+
+## Deviations (create-flow, from Matt's 2026-07-11 review — pending implementation)
+
+- **Host key removed entirely.** The brief (§A2/§B2.5) gated hosting/agent-spawning behind `HOST_KEY`. Matt's call: over-engineered for this demo — it runs on a free, resource-limited account, the quiz id is effectively unguessable, and we don't care if someone abuses it (Ably caps the blast radius). So `/api/ably-auth` will issue host/agent tokens without any secret; the create page drops the host-secret field; `HOST_KEY` env + `lib/host-secret.ts` go away. Roles/clientId prefixes stay (for capabilities + kind). Re-add a gate only if a real deployment needs it.
+- **Question grid → `react-datasheet-grid`.** Replace the custom paste grid with the lightweight dedicated library (Matt prefers not maintaining our own where a good light one exists).
+
+## Backlog / follow-ups (from Matt, beyond the original brief)
+
+- **"Open a Google Sheets template" button on `/create`** — one click opens a pre-formatted Google Sheets template with the columns already in place (question, correct, wrong1–3, time_limit_s, category), so authors start from a clean template and paste back into the grid. Deliberately deferred as a separate task (outside the original brief scope). (Matt, 2026-07-11.)
