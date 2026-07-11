@@ -30,7 +30,17 @@ const PLAYERS = intEnv('PLAYERS', 5);
 const QUESTION_MS = intEnv('QUESTION_MS', 8000);
 const REVEAL_MS = intEnv('REVEAL_MS', 3000);
 const CORRECT_RATE = floatEnv('CORRECT_RATE', 0.7);
+// Load-test knobs (S3.6). Defaults keep the S3.3 behaviour unchanged.
+const BURST_MS = intEnv('BURST_MS', 0); // >0: every player answers within this window
+const RAMP_CHUNK = intEnv('RAMP_CHUNK', 0); // >0: open connections in chunks of this size
+const RAMP_DELAY_MS = intEnv('RAMP_DELAY_MS', 150); // pause between ramp chunks
+// Distinct per-process id prefix so multiple player processes don't collide on
+// clientId (the quizmaster dedupes first-answer-wins by clientId#idx).
+const CLIENT_PREFIX = process.env.CLIENT_PREFIX ?? 'sim';
 const LETTERS: Choice[] = ['A', 'B', 'C', 'D'];
+
+// Aggregate answer-publish failures across all players (rate limits show as 42911).
+const pubErrors = { total: 0, byCode: {} as Record<string, number> };
 
 const QUESTIONS: QuestionDef[] = [
   {
@@ -98,10 +108,15 @@ function clientFor(body: Record<string, unknown>, withObjects: boolean): Ably.Re
 async function main(): Promise<void> {
   console.log(`sim: quiz=${QUIZ_ID} players=${PLAYERS} base=${BASE}`);
 
-  // --- Players: subscribe control, answer each question after a jittered delay.
-  const players = await Promise.all(
-    Array.from({ length: PLAYERS }, async (_unused, i) => {
-      const client = clientFor({ quizId: QUIZ_ID, role: 'player', clientId: `sim-${i}` }, false);
+  // One synthetic player: subscribe control, answer each question, enter presence.
+  // Resilient — a connection/presence failure (e.g. the 250 presence-member cap)
+  // returns null rather than crashing the run, so we report how many connected.
+  const makePlayer = async (i: number): Promise<Ably.Realtime | null> => {
+    try {
+      const client = clientFor(
+        { quizId: QUIZ_ID, role: 'player', clientId: `${CLIENT_PREFIX}-${i}` },
+        false,
+      );
       const main = client.channels.get(mainChannel(QUIZ_ID));
       const answers = client.channels.get(answersChannel(QUIZ_ID));
       await main.subscribe('control', (msg) => {
@@ -115,15 +130,46 @@ async function main(): Promise<void> {
           : 'A';
         const wantCorrect = i / PLAYERS < CORRECT_RATE;
         const choice = wantCorrect ? correctLetter : LETTERS[(m.idx + i) % m.options.length]!;
-        const wait = 200 + ((i * 137) % Math.max(1, QUESTION_MS - 1500));
-        setTimeout(() => void answers.publish('answer', { idx: m.idx, choice }), wait);
+        // BURST_MS>0 (load test): spread every player evenly across the burst window
+        // so ~PLAYERS answers hit the fan-in in BURST_MS. Else the S3.3 jitter.
+        const wait =
+          BURST_MS > 0
+            ? Math.floor((i / PLAYERS) * BURST_MS)
+            : 200 + ((i * 137) % Math.max(1, QUESTION_MS - 1500));
+        setTimeout(() => {
+          answers.publish('answer', { idx: m.idx, choice }).catch((e: unknown) => {
+            const code = String((e as { code?: number })?.code ?? 'unknown');
+            pubErrors.total += 1;
+            pubErrors.byCode[code] = (pubErrors.byCode[code] ?? 0) + 1;
+          });
+        }, wait);
       });
-      // Enter presence so the lobby shows them.
-      await main.presence.enter({ name: `Sim ${i + 1}` });
+      // NO_PRESENCE=1 isolates whether presence traffic on the main channel is
+      // what degrades control/answer delivery at scale (diagnostic).
+      if (process.env.NO_PRESENCE !== '1') await main.presence.enter({ name: `Sim ${i + 1}` });
       return client;
-    }),
-  );
-  console.log(`sim: ${players.length} players connected + present`);
+    } catch {
+      return null;
+    }
+  };
+
+  // --- Players. Open all at once, or ramp in chunks (RAMP_CHUNK) to stay under
+  // the connection-per-second limit at high player counts.
+  const players: Ably.Realtime[] = [];
+  if (RAMP_CHUNK > 0) {
+    for (let start = 0; start < PLAYERS; start += RAMP_CHUNK) {
+      const size = Math.min(RAMP_CHUNK, PLAYERS - start);
+      const chunk = await Promise.all(
+        Array.from({ length: size }, (_u, k) => makePlayer(start + k)),
+      );
+      players.push(...chunk.filter((c): c is Ably.Realtime => c !== null));
+      if (start + RAMP_CHUNK < PLAYERS) await delay(RAMP_DELAY_MS);
+    }
+  } else {
+    const all = await Promise.all(Array.from({ length: PLAYERS }, (_u, i) => makePlayer(i)));
+    players.push(...all.filter((c): c is Ably.Realtime => c !== null));
+  }
+  console.log(`sim: ${players.length}/${PLAYERS} players connected + present`);
 
   // Players-only: an external (e.g. browser) host drives the quiz; just answer.
   if (process.env.PLAYERS_ONLY === '1') {
@@ -166,20 +212,32 @@ async function main(): Promise<void> {
 
   for (let i = 0; i < QUESTIONS.length; i++) {
     await qm.askNext();
-    console.log(`sim: Q${i + 1} asking (${QUESTION_MS}ms window)`);
+    const window = BURST_MS > 0 ? `${BURST_MS}ms burst` : `${QUESTION_MS}ms window`;
+    console.log(`sim: Q${i + 1} asking (${window})`);
     await delay(QUESTION_MS);
     await qm.lock();
+    const received = qm.getAnswerLog().filter((e) => e.idx === i).length;
+    console.log(`sim: Q${i + 1} locked — ${received}/${players.length} answers in`);
     await delay(600);
     await qm.reveal();
-    console.log(`sim: Q${i + 1} revealed`);
     await delay(REVEAL_MS);
   }
   await qm.podium();
 
+  // --- Result summary. For the S3.6 gate: zero dropped answers means every
+  // connected player's answer for every question reached the quizmaster.
   const standings = qm.getStandings();
   const answered = qm.getAnswerLog().length;
+  const expected = players.length * QUESTIONS.length;
+  const dropped = expected - answered;
+  const dropPct = expected > 0 ? ((dropped / expected) * 100).toFixed(1) : '0.0';
   console.log(
-    `\nsim done. answers=${answered} players=${PLAYERS}x${QUESTIONS.length}=${PLAYERS * QUESTIONS.length}`,
+    `\nsim done. connected=${players.length}/${PLAYERS} answers=${answered}/${expected} dropped=${dropped} (${dropPct}%)`,
+  );
+  console.log(
+    pubErrors.total > 0
+      ? `publish errors: ${pubErrors.total} ${JSON.stringify(pubErrors.byCode)}`
+      : 'publish errors: none',
   );
   console.log(
     'top:',

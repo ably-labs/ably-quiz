@@ -37,8 +37,8 @@
 - [x] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
 - [x] S3.4 podium + results
 - [x] S3.5 recovery tests (host + player refresh) + docs/TESTING.md
-- [ ] S3.6 synthetic 300-player load test
-- [ ] **GATE: full quiz, 5 real browsers + 300 synthetic, zero dropped answers, recovery passes**
+- [~] S3.6 synthetic 300-player load test — **harness built + measured**; clean at ≤60, but a single machine can't honestly generate a 300-device burst (see Blocked + [spikes/quiz-sim/LOAD-RESULTS.md](spikes/quiz-sim/LOAD-RESULTS.md))
+- [~] **GATE: full quiz, 5 real browsers + 300 synthetic, zero dropped answers, recovery passes** — recovery PASSES (S3.5); 300-zero-drop not yet demonstrable (Blocked)
 
 ## S4 — Agents
 
@@ -79,7 +79,25 @@
 
 ## Blocked
 
-_(none yet)_
+- **S3 gate — 300-synthetic zero-drop (needs a decision, Matt).** The load harness
+  (`spikes/quiz-sim`) is built and run to 300. The pipeline is **clean at the scale
+  one machine can honestly generate** (0.6% drops at 60 players) with no Ably-side
+  errors, and recovery passes. But at ≥150 connections **in a single Node process**
+  the harness itself saturates (flat ~12% answer loss, independent of burst rate and
+  presence — a shared-event-loop artifact, not an Ably/app limit; full analysis in
+  [LOAD-RESULTS.md](spikes/quiz-sim/LOAD-RESULTS.md)). To demonstrate a true
+  300-**device** zero-drop burst we need one of:
+  1. a **distributed load rig** — host isolated (browser/own process), players spread
+     across several processes/machines (harness already supports this via
+     `PLAYERS_ONLY` + `CLIENT_PREFIX`); or
+  2. agree the 60-player-clean + browser E2E + recovery evidence is sufficient
+     correctness proof, and treat 300 as a capacity exercise.
+     Also, the **lobby roster caps at 250** (presence `91003` on this tier) — a real
+     300-player event needs the §B2.1 **presence-split onto a batched `quiz-lobby`
+     channel** (code + Ably app-config). Answer-channel sharding is **not** yet
+     warranted (no `42911` observed). **Need from Matt:** which path for the gate, and
+     a go-ahead to implement the presence-split (+ confirm/raise the Ably tier for a
+     300-member roster).
 
 ## Deviations (create-flow, from Matt's 2026-07-11 review — landed)
 
