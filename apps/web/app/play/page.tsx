@@ -31,6 +31,9 @@ export default function PlayPage() {
   }, [currentIdx]);
 
   const me = conn ? view.scoreboard[conn.clientId] : undefined;
+  const ranking = Object.entries(view.scoreboard).sort((a, b) => b[1].score - a[1].score);
+  const myRank = conn ? ranking.findIndex(([id]) => id === conn.clientId) + 1 : 0;
+  const winner = ranking[0]?.[1];
 
   function submit(choice: Choice) {
     if (!conn || !quizId || !view.question || view.phase !== 'asking') return;
@@ -139,9 +142,22 @@ export default function PlayPage() {
       )}
 
       {(view.phase === 'podium' || view.phase === 'analysis' || view.phase === 'done') && (
-        <div className="text-center">
+        <div className="space-y-4 text-center">
           <p className="text-2xl font-bold">That&apos;s a wrap!</p>
-          <p className="mt-2 text-neutral-400">{me?.score ?? 0} pts — see the big screen.</p>
+          {myRank > 0 ? (
+            <p className="text-5xl font-extrabold tabular-nums">
+              #{myRank}
+              <span className="text-2xl font-normal text-neutral-500"> of {ranking.length}</span>
+            </p>
+          ) : null}
+          <p className="text-neutral-400">{me?.score ?? 0} pts</p>
+          {winner && (
+            <p className="text-sm text-neutral-500">
+              🏆 {winner.name} won{' '}
+              {winner.kind === 'agent' ? '— Silicon takes it' : '— Carbon takes it'}. See the big
+              screen.
+            </p>
+          )}
         </div>
       )}
     </main>

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { getAlgo } from '@ably-quiz/core';
 import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
-import { Countdown, QuestionCard, Scoreboard, TallyBars, TugOfWar } from '@/components/quiz';
+import { Countdown, Podium, QuestionCard, Scoreboard, TallyBars, TugOfWar } from '@/components/quiz';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useQuizId } from '@/hooks/useQuizId';
 import { useQuizState } from '@/hooks/useQuizState';
@@ -85,10 +85,8 @@ export default function ScreenPage() {
       )}
 
       {ended && (
-        <section className="space-y-8">
-          <h2 className="text-center text-3xl font-extrabold">Final standings</h2>
-          <Scoreboard scoreboard={view.scoreboard} limit={12} />
-          <TugOfWar scoreboard={view.scoreboard} />
+        <section>
+          <Podium scoreboard={view.scoreboard} />
         </section>
       )}
     </main>

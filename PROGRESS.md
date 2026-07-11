@@ -35,7 +35,7 @@
 - [x] S3.1 create flow (paste TSV/CSV, algo picker, links + QR)
 - [x] S3.2 lobby (presence roster)
 - [x] S3.3 question loop UI (/play, /screen: countdown, tallies, reveal, tug-of-war)
-- [ ] S3.4 podium + results
+- [x] S3.4 podium + results
 - [ ] S3.5 recovery tests (host + player refresh) + docs/TESTING.md
 - [ ] S3.6 synthetic 300-player load test
 - [ ] **GATE: full quiz, 5 real browsers + 300 synthetic, zero dropped answers, recovery passes**

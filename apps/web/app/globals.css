@@ -12,6 +12,19 @@
   color-scheme: dark;
 }
 
+/* Podium columns rise into place, staggered by animation-delay (§B2.10).
+   Richer motion + confetti come in the S5.2 polish pass. */
+@keyframes podium-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);
