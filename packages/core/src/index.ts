@@ -13,3 +13,4 @@ export * from './protocol';
 export * from './state-machine';
 export * from './scoring';
 export * from './quizmaster';
+export * from './ingest';

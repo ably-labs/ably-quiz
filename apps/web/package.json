@@ -12,11 +12,13 @@
   "dependencies": {
     "@ably-quiz/core": "workspace:*",
     "next": "^16.2.10",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "postcss": "^8.5.16",
