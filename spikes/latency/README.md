@@ -25,6 +25,17 @@ Reads keys from the repo-root `.env.local`. Only providers whose key is present 
 run; the rest are **skipped and recorded** in `RESULTS.md`. Day 0 is Anthropic-only
 (Opus 4.8 / Sonnet 5 / Fable 5) — re-run as `OPENAI_API_KEY` / `XAI_API_KEY` arrive.
 
+**xAI (Matt's machine):** there's no raw xAI key in `.env.local`, but a real one lives
+in the LiteLLM env. Source it at run time (never copied into the repo):
+
+```sh
+set -a; source <(grep -E '^XAI_API_KEY=' ~/.provider-keys.env); set +a
+XAI_MODEL=grok-4.20-0309-non-reasoning pnpm --dir spikes/latency spike
+```
+
+**OpenAI:** not configured anywhere on this machine (LiteLLM fronts xAI/Anthropic/Google,
+not OpenAI). `matt-gpt` stays skipped until an `OPENAI_API_KEY` is provided.
+
 ### Env knobs (optional)
 
 | var                          | default            | purpose                                            |

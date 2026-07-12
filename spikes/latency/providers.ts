@@ -70,9 +70,12 @@ export const MODELS: ModelSpec[] = [
   },
   {
     key: 'matt-grok',
-    label: 'Matt Grok (xAI — VERIFY id at S4)',
+    // Verified 2026-07-12 against api.x.ai/v1/models: current text models are
+    // grok-4.3 (flagship) and grok-4.20-0309-{reasoning,non-reasoning}. The
+    // non-reasoning variant is fastest (p50 ~0.9s) and ideal for the answer window.
+    label: 'Matt Grok (xAI grok-4.20 non-reasoning)',
     provider: 'xai',
-    model: process.env.XAI_MODEL ?? 'grok-2-latest',
+    model: process.env.XAI_MODEL ?? 'grok-4.20-0309-non-reasoning',
   },
 ];
 
