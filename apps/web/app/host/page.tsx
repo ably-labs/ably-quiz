@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { Lobby } from '@/components/Lobby';
+import { Countdown, LETTERS, QuestionCard, Scoreboard, TallyBars } from '@/components/quiz';
 import { useAbly } from '@/hooks/useAbly';
 import { useHostQuiz } from '@/hooks/useHostQuiz';
 import { useQuizId } from '@/hooks/useQuizId';
@@ -13,7 +14,7 @@ export default function HostPage() {
   const quiz = useMemo(() => (typeof quizId === 'string' ? loadQuiz(quizId) : null), [quizId]);
   const params = typeof quizId === 'string' && quiz ? { quizId, role: 'host' as const } : null;
   const { status, conn, error } = useAbly(params);
-  const { state, controls, answersIn, busy, members } = useHostQuiz(conn, quiz);
+  const { state, correct, question, live, controls, busy, members } = useHostQuiz(conn, quiz);
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -24,8 +25,18 @@ export default function HostPage() {
   const qLabel = state.questionIdx >= 0 ? `Q${state.questionIdx + 1} / ${total}` : '';
   const isLast = state.questionIdx + 1 >= total;
 
+  const asking = state.phase === 'asking';
+  const locked = state.phase === 'locked';
+  const revealed = state.phase === 'revealed';
+  const ended = state.phase === 'podium' || state.phase === 'analysis' || state.phase === 'done';
+  const showQuestion = (asking || locked || revealed) && question;
+
+  const roster = members.length;
+  const answered = Object.values(live.scoreboard).filter((e) => e.answered).length;
+  const correctText = correct ? question?.options[LETTERS.indexOf(correct)] : undefined;
+
   return (
-    <main className="mx-auto max-w-2xl px-6 py-10">
+    <main className="mx-auto max-w-3xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <p className="text-xs tracking-widest text-neutral-500 uppercase">host controls</p>
@@ -42,23 +53,61 @@ export default function HostPage() {
       </header>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
 
+      {showQuestion && (
+        <section className="mb-6 space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex-1">
+              <QuestionCard prompt={question.prompt} />
+            </div>
+            {(asking || locked) && (
+              <div className="shrink-0">
+                <Countdown startedAt={question.startedAt} limitMs={question.limitMs} />
+              </div>
+            )}
+          </div>
+
+          {correct && (
+            <p className="text-sm text-neutral-400">
+              Answer: <span className="font-semibold text-emerald-400">{correct}</span>
+              {correctText ? ` — ${correctText}` : ''}{' '}
+              <span className="text-neutral-600">(host only — not shown to players)</span>
+            </p>
+          )}
+
+          <TallyBars
+            options={question.options}
+            tallies={live.tallies}
+            correct={revealed ? correct : null}
+          />
+
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-neutral-400">
+              <span className="font-semibold text-neutral-200 tabular-nums">{answered}</span> of{' '}
+              {roster} answered
+            </span>
+            {locked && <span className="text-amber-400">answers locked</span>}
+            {revealed && <span className="text-emerald-400">revealed</span>}
+          </div>
+        </section>
+      )}
+
       <div className="mb-8 flex flex-wrap gap-3">
         {state.phase === 'lobby' && (
           <Control onClick={controls.next} busy={busy} disabled={total === 0} primary>
             Start quiz →
           </Control>
         )}
-        {state.phase === 'asking' && (
+        {asking && (
           <Control onClick={controls.lock} busy={busy} primary>
-            Lock answers ({answersIn} in)
+            Lock answers ({answered}/{roster})
           </Control>
         )}
-        {state.phase === 'locked' && (
+        {locked && (
           <Control onClick={controls.reveal} busy={busy} primary>
             Reveal answer
           </Control>
         )}
-        {state.phase === 'revealed' && (
+        {revealed && (
           <>
             {!isLast && (
               <Control onClick={controls.next} busy={busy} primary>
@@ -70,10 +119,17 @@ export default function HostPage() {
             </Control>
           </>
         )}
-        {(state.phase === 'podium' || state.phase === 'analysis' || state.phase === 'done') && (
-          <p className="text-neutral-400">Quiz complete.</p>
-        )}
+        {ended && <p className="text-neutral-400">Quiz complete — results are on the screen.</p>}
       </div>
+
+      {ended && Object.keys(live.scoreboard).length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-2 text-sm font-semibold tracking-wide text-neutral-400 uppercase">
+            Final standings
+          </h2>
+          <Scoreboard scoreboard={live.scoreboard} limit={12} />
+        </section>
+      )}
 
       <Lobby members={members} />
     </main>

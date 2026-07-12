@@ -105,6 +105,12 @@ export class Quizmaster {
     return { ...this.sm };
   }
 
+  /** The correct letter for a question once it's been asked — host UI only
+   *  (the host knows the answers; this is never broadcast to contestants). */
+  getCorrect(idx: number): Choice | undefined {
+    return this.correctByIdx.get(idx);
+  }
+
   /** Record a display name (from lobby presence) for scoreboard entries. */
   setDisplayName(clientId: string, name: string): void {
     this.names.set(clientId, name);

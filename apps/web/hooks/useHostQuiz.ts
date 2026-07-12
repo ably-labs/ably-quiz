@@ -1,17 +1,27 @@
 'use client';
 
-import { kindFromClientId, Quizmaster, type InboundAnswer, type QuizState } from '@ably-quiz/core';
+import {
+  parseControlMessage,
+  Quizmaster,
+  type Choice,
+  type InboundAnswer,
+  type QuizState,
+} from '@ably-quiz/core';
 import type * as Ably from 'ably';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Connection } from '@/lib/ably';
-import type { Member } from '@/hooks/useAbly';
+import { presenceToMembers, type Member } from '@/hooks/useAbly';
+import type { QuestionBroadcast } from '@/hooks/useQuizState';
 import {
   AblyBroadcaster,
   AblyLiveStore,
   answersChannel,
   getMainChannel,
+  INITIAL_STATE,
   loadAnswerHistory,
   loadControlHistory,
+  subscribeQuizState,
+  type LiveQuizState,
 } from '@/lib/quiz-live';
 import type { StoredQuiz } from '@/lib/quiz-storage';
 
@@ -29,6 +39,12 @@ export function useHostQuiz(
   quiz: StoredQuiz | null,
 ): {
   state: QuizState;
+  /** Correct letter for the current question (host-only readout). */
+  correct: Choice | null;
+  /** The current question as broadcast (shuffled options), for the host console. */
+  question: QuestionBroadcast | null;
+  /** Live tallies + scoreboard the quizmaster is publishing (read back off LiveObjects). */
+  live: LiveQuizState;
   controls: HostControls;
   answersIn: number;
   busy: boolean;
@@ -36,6 +52,9 @@ export function useHostQuiz(
 } {
   const qmRef = useRef<Quizmaster | null>(null);
   const [state, setState] = useState<QuizState>({ phase: 'lobby', questionIdx: -1 });
+  const [correct, setCorrect] = useState<Choice | null>(null);
+  const [question, setQuestion] = useState<QuestionBroadcast | null>(null);
+  const [live, setLive] = useState<LiveQuizState>(INITIAL_STATE);
   const [answersIn, setAnswersIn] = useState(0);
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
@@ -54,15 +73,10 @@ export function useHostQuiz(
 
     const main = getMainChannel(client, quiz.quizId, { write: true });
     const answers = client.channels.get(answersChannel(quiz.quizId));
-    const toMember = (m: { clientId?: string | undefined; data?: unknown }): Member => ({
-      clientId: m.clientId ?? '?',
-      kind: kindFromClientId(m.clientId ?? ''),
-      name: (m.data as { name?: string } | undefined)?.name ?? m.clientId ?? 'anon',
-    });
     const refresh = async () => {
-      const present = await main.presence.get();
-      setMembers(present.map(toMember));
-      for (const m of present) if (m.clientId) qm.setDisplayName(m.clientId, toMember(m).name);
+      const roster = presenceToMembers(await main.presence.get());
+      setMembers(roster);
+      for (const m of roster) qm.setDisplayName(m.clientId, m.name);
     };
 
     // Until history is replayed the engine hasn't got its phase/T₀ back, so
@@ -86,11 +100,32 @@ export function useHostQuiz(
     };
 
     let cancelled = false;
+    let disposed = false;
+
+    // Mirror the broadcast question + the tallies/scoreboard the quizmaster writes,
+    // so the host console shows exactly what players see. Both read off the SAME
+    // write channel — no read-only mode clash with the quizmaster's own attach.
+    const onControl = (msg: Ably.Message) => {
+      const m = parseControlMessage(msg.data);
+      if (disposed || m?.type !== 'question') return;
+      setQuestion({
+        idx: m.idx,
+        prompt: m.prompt,
+        options: m.options,
+        limitMs: m.limitMs,
+        startedAt: msg.timestamp ?? Date.now(),
+      });
+    };
+
     void (async () => {
       // Subscribe FIRST (attaches the channels) so no live message slips through
       // the gap between reading history and going live.
       await answers.subscribe(onAnswer);
+      await main.subscribe('control', onControl);
       await main.presence.subscribe(() => void refresh());
+      await subscribeQuizState(main, (s) => {
+        if (!disposed) setLive(s);
+      });
       await refresh();
 
       const [controlHistory, answerHistory] = await Promise.all([
@@ -103,6 +138,22 @@ export function useHostQuiz(
       // otherwise this is a fresh start.
       if (controlHistory.some((c) => c.msg.type === 'question')) {
         qm.recover(controlHistory, answerHistory);
+        // Seed the console's question view too (host refresh mid-question).
+        for (let i = controlHistory.length - 1; i >= 0; i--) {
+          const c = controlHistory[i]!;
+          if (c.msg.type === 'question') {
+            const qm2 = c.msg;
+            if (!disposed)
+              setQuestion({
+                idx: qm2.idx,
+                prompt: qm2.prompt,
+                options: qm2.options,
+                limitMs: qm2.limitMs,
+                startedAt: c.serverTs,
+              });
+            break;
+          }
+        }
       } else {
         qm.init();
       }
@@ -111,13 +162,16 @@ export function useHostQuiz(
       for (const raw of buffer.splice(0)) qm.ingest(raw); // dedup handles overlap
       const idx = qm.getState().questionIdx;
       setAnswersIn(qm.getAnswerLog().filter((e) => e.idx === idx).length);
+      setCorrect(qm.getCorrect(idx) ?? null);
       setState(qm.getState());
     })();
 
     return () => {
       cancelled = true;
+      disposed = true;
       qmRef.current = null;
       answers.unsubscribe();
+      main.unsubscribe('control', onControl);
       main.presence.unsubscribe();
     };
   }, [conn, quiz]);
@@ -128,7 +182,9 @@ export function useHostQuiz(
     setBusy(true);
     try {
       await fn(qm);
-      setState(qm.getState());
+      const next = qm.getState();
+      setState(next);
+      setCorrect(qm.getCorrect(next.questionIdx) ?? null);
     } finally {
       setBusy(false);
     }
@@ -145,5 +201,5 @@ export function useHostQuiz(
     podium: () => run((qm) => qm.podium()),
   };
 
-  return { state, controls, answersIn, busy, members };
+  return { state, correct, question, live, controls, answersIn, busy, members };
 }

@@ -61,6 +61,23 @@ export function useAbly(params: ConnectParams | null): {
 
 export type Member = { clientId: string; kind: Kind; name: string };
 
+/** Map presence messages to roster members, DEDUPED by clientId. `presence.get()`
+ *  returns one entry per connection, so a player who refreshed (old connection
+ *  still lingering) or opened a second tab would otherwise appear twice — showing
+ *  duplicates in the roster and colliding on the React `key`. One person = one entry. */
+export function presenceToMembers(present: Ably.PresenceMessage[]): Member[] {
+  const byId = new Map<string, Member>();
+  for (const m of present) {
+    const clientId = m.clientId ?? '?';
+    byId.set(clientId, {
+      clientId,
+      kind: kindFromClientId(clientId),
+      name: (m.data as { name?: string } | undefined)?.name ?? clientId,
+    });
+  }
+  return [...byId.values()];
+}
+
 /** Subscribe to the lobby presence set on the main channel; optionally enter it. */
 export function usePresence(
   conn: Connection | null,
@@ -75,15 +92,9 @@ export function usePresence(
     const channel = getMainChannel(conn.client, quizId, { write: false });
     let mounted = true;
 
-    const toMember = (m: Ably.PresenceMessage): Member => ({
-      clientId: m.clientId ?? '?',
-      kind: kindFromClientId(m.clientId ?? ''),
-      name: (m.data as { name?: string } | undefined)?.name ?? m.clientId ?? 'anon',
-    });
-
     const refresh = async () => {
       const present = await channel.presence.get();
-      if (mounted) setMembers(present.map(toMember));
+      if (mounted) setMembers(presenceToMembers(present));
     };
 
     void channel.presence.subscribe(refresh);
