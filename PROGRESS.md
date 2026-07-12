@@ -42,7 +42,7 @@
 
 ## S4 — Agents
 
-- [ ] S4.1 agent runner + registry loader
+- [x] S4.1 agent runner + registry loader
 - [ ] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
 - [ ] S4.3 roster of five + ably-digest + study script + cribs
 - [ ] S4.4 agent host on Vercel (Fluid, lease, heartbeat, re-trigger) + local runner
