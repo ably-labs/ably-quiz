@@ -118,6 +118,22 @@ inside the running app** — no separate process, no Fluid lease/heartbeat/re-tr
 - Scoring/reveal/tug-of-war unchanged — the fan-in is already decoupled from presence/process, which
   is what makes this a drop-in. (See the S4.3 auto-lock fix: host gates on the per-idx answer count.)
 
+**Build status (S4.4) — Slices A + B landed & verified live (2026-07-14):**
+- **Slice A** (declarative roster): `GET /api/agents` lists the registry; create-time agent checklist
+  (all on by default) → `config.agents` (`AgentRosterEntry[]`) flows through LiveObjects to host/screen/play.
+- **Slice B** (on-demand invocation): `POST /api/agent-turn` runs one agent's turn (persona + crib + digest
+  → `answerQuestion`) and publishes to `quiz-answers:{id}` as `a:{slug}` via Ably REST (master key; server is
+  the trusted authority — no persistent connection, no AIT). `useHostQuiz` fires one per declared agent on each
+  question broadcast, seeds declared display names (scoreboard shows "Matt GPT" without presence), and the
+  auto-lock target is now **humans present + declared agents** (union with any present agent slugs, so a
+  co-hosted `agents:start` isn't double-counted). Host "X of Y answered" uses the per-idx count / expected count.
+- **Verified live, NO runner process:** 5 declared agents shown on host; Start fired 5 turns; Q1 & Q2 each
+  `5 of 5` answered + auto-locked; podium scored all five by name (Grok › GPT › Opus › Sonnet › Fable). Direct
+  `/api/agent-turn` tests: xAI/OpenAI/Anthropic all answer correctly, grounded (AIT question), HTTP 200.
+- **Remaining:** Slice C = the AIT thinking-stream into `/api/agent-turn` + the presence "thinking" indicator
+  (S4.5 on-screen thinking) and the MCP MCP grounding (below). Prod hardening: a worst-case ~18s turn can
+  exceed a Vercel serverless timeout — address when deploying.
+
 ### MCP MCP grounding (S6, rewritten)
 
 Optional live grounding: agents query **MCP** (the org-knowledge MCP) at question time. Auth is
