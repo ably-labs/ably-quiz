@@ -44,7 +44,7 @@
 
 - [x] S4.1 agent runner + registry loader
 - [x] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
-- [ ] S4.3 roster of five + ably-digest + study script + cribs
+- [x] S4.3 roster of **four** (matt-gpt deferred — no OpenAI key) + ably-digest + study script + cribs
 - [ ] S4.4 agent host on Vercel (Fluid, lease, heartbeat, re-trigger) + local runner
 - [ ] S4.5 UI: agent chips, thinking drawer, quips
 - [ ] S4.6 commentator
@@ -73,6 +73,23 @@ tally + tug-of-war confirmed); the AIT channel materialized 2 full runs
 the streamed think-aloud correctly clipped at the answer JSON (e.g. _"From the
 Latin aurum — gold's classical name…"_). The five-agent roster + shared digest +
 study script is S4.3; the on-screen thinking drawer is S4.5.
+
+**Stage note (S4.3):** The field is now **four** — `matt-opus` (claude-opus-4-8),
+`matt-sonnet` (claude-sonnet-5), `matt-fable` (claude-fable-5), `matt-grok`
+(grok-4.20-0309-non-reasoning). `matt-gpt` (OpenAI) is deferred — no `OPENAI_API_KEY`
+on the machine — and drops in later by adding one folder + key. Grounding is two
+layers: the hand-curated shared **`packages/core/src/ably-digest.md`** (baseline,
+verified vs llms.txt 2026-07-13) injected into every agent, plus each agent's
+committed **`crib.md`** from `pnpm agents:study`. Study is a named strategy in
+agent.json (`"study": "ably-docs"`) → `ablyDocsStudy` scrapes `ably.com/llms.txt`,
+keeps the product/concept entries (drops pricing/getting-started noise), and
+product entries are sorted to the front so all six products (incl. AI Transport)
+are covered before the 50-entry cap. Custom per-agent code studies (`agent.ts`
+`study(ctx)`) are deferred to the S4.7 dev kit. Deviation: the registry now
+tolerates a declared-but-missing `crib.md` (loads the agent without it) — required
+so `agents:study` can run before the cribs exist. To run the field live, source
+the real xAI key for `matt-grok` (`~/.provider-keys.env`); the
+three Claudes need only `ANTHROPIC_API_KEY`.
 
 ## S5 — Polish & quiz-day readiness
 

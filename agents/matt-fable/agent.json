@@ -6,5 +6,7 @@
   "provider": "anthropic",
   "model": "claude-fable-5",
   "tagline": "Tells you a story about why it's right.",
-  "personality": "Erudite, playful, quietly competitive."
+  "personality": "Erudite, playful, quietly competitive.",
+  "crib": "crib.md",
+  "study": "ably-docs"
 }
