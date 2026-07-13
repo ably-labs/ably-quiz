@@ -47,7 +47,7 @@
 - [x] S4.3 roster of **five** (`matt-gpt` added 2026-07-13 once an OpenAI key landed) + ably-digest + study script + cribs
 - [ ] S4.4 **on-demand agents** (create-time checklist → declarative roster; host-triggered in-app `/api/agent-turn`; presence=thinking-indicator). Redesigned — see "S4.4 + S6 redesign" below. `agents:start` kept as dev harness.
 - [x] S4.5 UI: agent chips (roster, Slice A) + on-screen thinking wall + quips on `/screen` (2026-07-14)
-- [ ] S4.6 commentator
+- [x] S4.6 commentator — Fable streams a ~150-word verdict to `/screen` on `analysis` (2026-07-14)
 - [ ] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison)
 - [ ] **GATE: dry run incl. agent-host kill/recovery test + dev-kit 10-minute experience**
 
