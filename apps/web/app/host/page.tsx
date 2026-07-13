@@ -14,7 +14,8 @@ export default function HostPage() {
   const quiz = useMemo(() => (typeof quizId === 'string' ? loadQuiz(quizId) : null), [quizId]);
   const params = typeof quizId === 'string' && quiz ? { quizId, role: 'host' as const } : null;
   const { status, conn, error } = useAbly(params);
-  const { state, correct, question, live, controls, busy, members } = useHostQuiz(conn, quiz);
+  const { state, correct, question, live, controls, answersIn, expectedAnswerers, busy, members } =
+    useHostQuiz(conn, quiz);
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -31,8 +32,11 @@ export default function HostPage() {
   const ended = state.phase === 'podium' || state.phase === 'analysis' || state.phase === 'done';
   const showQuestion = (asking || locked || revealed) && question;
 
-  const roster = members.length;
-  const answered = Object.values(live.scoreboard).filter((e) => e.answered).length;
+  // Denominator = expected answerers (humans present + declared agents), and the
+  // count is the engine's per-idx tally — so it reads right for on-demand agents,
+  // which answer via /api/agent-turn without entering presence (§S4.4).
+  const roster = expectedAnswerers;
+  const answered = answersIn;
   const correctText = correct ? question?.options[LETTERS.indexOf(correct)] : undefined;
 
   return (

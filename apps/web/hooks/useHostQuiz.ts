@@ -47,6 +47,8 @@ export function useHostQuiz(
   live: LiveQuizState;
   controls: HostControls;
   answersIn: number;
+  /** Humans present + declared agents — the "X of Y answered" denominator (§S4.4). */
+  expectedAnswerers: number;
   busy: boolean;
   members: Member[];
 } {
@@ -70,6 +72,9 @@ export function useHostQuiz(
       store: new AblyLiveStore(client, quiz.quizId),
     });
     qmRef.current = qm;
+    // Seed declared agents' display names so the scoreboard reads "Matt GPT" even
+    // though on-demand agents answer via /api/agent-turn without entering presence.
+    for (const a of quiz.config.agents ?? []) qm.setDisplayName(`a:${a.slug}`, a.name);
 
     const main = getMainChannel(client, quiz.quizId, { write: true });
     const answers = client.channels.get(answersChannel(quiz.quizId));
@@ -215,7 +220,15 @@ export function useHostQuiz(
   // A question resolves the moment it's decided — everyone present has answered,
   // OR the timer runs out — no waiting on the host to Lock. Then it auto-reveals
   // (unless the quiz turns that off, to hold on "locked" for suspense).
-  const presentCount = members.length;
+  // Expected answerers = humans in presence + the declared agent roster (§S4.4).
+  // On-demand agents answer via /api/agent-turn WITHOUT entering presence, so the
+  // auto-lock target can't be presence-only. Union present + declared agent slugs
+  // so a co-hosted persistent runner (also present) is never double-counted.
+  const humanCount = members.filter((m) => m.kind === 'human').length;
+  const agentSlugs = new Set<string>();
+  for (const m of members) if (m.kind === 'agent') agentSlugs.add(m.clientId.replace(/^a:/, ''));
+  for (const a of quiz?.config.agents ?? []) agentSlugs.add(a.slug);
+  const expectedAnswerers = humanCount + agentSlugs.size;
   const autoLockedIdx = useRef(-1);
 
   useEffect(() => {
@@ -226,10 +239,10 @@ export function useHostQuiz(
       autoLockedIdx.current = idx;
       void controls.lock();
     };
-    // Everyone present has answered THIS question → done. `answersIn` is the
+    // Everyone expected has answered THIS question → done. `answersIn` is the
     // engine's per-idx count (see ingest), so it can't be tripped by the previous
     // question's stale `answered` flags mid-transition — the premature-lock race.
-    if (presentCount > 0 && answersIn >= presentCount) {
+    if (expectedAnswerers > 0 && answersIn >= expectedAnswerers) {
       lockOnce();
       return;
     }
@@ -237,7 +250,33 @@ export function useHostQuiz(
     const remaining = question.startedAt + question.limitMs - Date.now();
     const timer = setTimeout(lockOnce, Math.max(0, remaining));
     return () => clearTimeout(timer);
-  }, [state.phase, state.questionIdx, question, presentCount, answersIn, controls]);
+  }, [state.phase, state.questionIdx, question, expectedAnswerers, answersIn, controls]);
+
+  // Fire each declared agent's turn when a question is broadcast (§S4.4). Request-
+  // based, fire-and-forget: one POST per agent; the answer returns on the fan-in,
+  // and one agent failing never stalls the quiz. Once per question idx, and only
+  // once `question` matches the current idx (so we never send a stale question).
+  const firedTurnIdx = useRef(-1);
+  useEffect(() => {
+    if (state.phase !== 'asking' || !question || !quiz) return;
+    if (question.idx !== state.questionIdx) return;
+    const agents = quiz.config.agents ?? [];
+    if (agents.length === 0 || firedTurnIdx.current === question.idx) return;
+    firedTurnIdx.current = question.idx;
+    const payloadQuestion = {
+      idx: question.idx,
+      prompt: question.prompt,
+      options: question.options,
+      limitMs: question.limitMs,
+    };
+    for (const a of agents) {
+      void fetch('/api/agent-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quizId: quiz.quizId, slug: a.slug, question: payloadQuestion }),
+      }).catch(() => undefined);
+    }
+  }, [state.phase, state.questionIdx, question, quiz]);
 
   useEffect(() => {
     if (state.phase !== 'locked') return;
@@ -246,5 +285,5 @@ export function useHostQuiz(
     return () => clearTimeout(timer);
   }, [state.phase, quiz, controls]);
 
-  return { state, correct, question, live, controls, answersIn, busy, members };
+  return { state, correct, question, live, controls, answersIn, expectedAnswerers, busy, members };
 }
