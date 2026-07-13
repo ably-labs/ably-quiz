@@ -167,6 +167,24 @@ Flow:
 - Deferred: verify a live DCR registration + confirm the exact `allowedTools` enforcement point in
   `callTool`, and whether `ToolMetadata` carries a read/write flag (auto-derive the allowlist vs curate).
 
+### Read-only `allowedTools` allowlist — FINALIZED with Matt (2026-07-14)
+
+Curated from the live registry (`ably-os/packages/context/mcp-tools-reference/full.md`, 273 entries),
+classified read vs write by verified tool description. **61 read-only tools**, passed as
+`?allowedTools=<comma-joined>` on the `/mcp` connection. This is the source of truth for the build.
+
+- **Plumbing (7):** `searchAblyTools`, `callTool`, `getToolCategories`, `getContext`, `getContextDetail`, `listAllContexts`, `getCurrentDate`
+- **Skills (3):** `skillList`, `skillSearch`, `skillGet`
+- **Wiki (9):** `wikiSearchPages`, `wikiSearchUsingCql`, `wikiGetPage`, `wikiGetPagesInSpace`, `wikiGetSpaces`, `wikiGetBlogPost`, `wikiGetPageAncestors`, `wikiGetLabels`, `wikiContentInsights`
+- **GitHub (12):** `githubGetFileContents`, `githubGetRepository`, `githubGetIssue`, `githubGetCommit`, `githubListAblyRepositories`, `githubSearchAblyRepositories`, `githubSmartSearch`, `githubListBranches`, `githubListTags`, `githubListWorkflowRuns`, `githubGetWorkflowRun`, `githubAnalyze`
+- **Helpdesk (2):** `helpdeskGetConversation`, `helpdeskGetConversations`
+- **Web fetch (3):** `webFetchAI`, `webFetchBrowser`, `webFetchScrape`
+- **Chat (5):** `chatListChannels`, `chatFindAndAnalyze`, `chatDiscoverThemes`, `chatChannelActivity`, `chatAnalyzeThread`
+- **Tracker (6):** `trackerGetIssue`, `trackerSearchIssues`, `trackerListProjects`, `trackerListBoards`, `trackerListStatuses`, `trackerCommonQueries`
+- **Google Workspace, reads only (14):** `googleDocsRead`, `googleDocsAnalyze`, `googleDocsActivity`, `googleDriveRead`, `googleDriveAnalyze`, `googleDriveExcelAnalyze`, `googleDriveJSONAnalyze`, `googleDrivePDFAnalyze`, `googleSheetsRead`, `googleSheetsAnalyze`, `googleSlidesRead`, `googleSlidesAnalyze`, `googleSlidesSummary`, `googleSlidesActivity`
+
+**Excluded (with reason):** all writes/mutations (`*Create/Update/Add/Send/Move/Transition/Delete/Manage/Write/Chart/Format/Upload/Revoke/Enable/Reload`); **Gong** + **HubSpot** (customer-confidential/PII, even reads); **Xero/Stripe** (finance); **BambooHR/On-Call** (HR/personal); **Gmail/Calendar** + all GSuite writers; **Metabase/Snowflake/usage/GA/Peec/Semrush/Dashboards/Fivetran** (BI, not knowledge); **Sentry** (ops); **LinkedIn/Twitter/Reddit/YouTube/Octolens** (external social); admin/identity (`revoke*`, `*OAuthStatus`, `userInfo`, `chatLookupUser`, `wikiGetUserInfo`); misc (`figma*`, `rebrandly*`, `devtoArticle`, `brand*`, `worldCup*`, `submitFeedback`). Note `googleDriveManage` excluded because it can **share** (change ACLs). Belt-and-braces: an injected system instruction ("reads only; only clearly public/company-shared resources").
+
 ### Follow-ups (not quiz blockers)
 
 - **MCP `?readOnly=true` mode** — a server-side read-only filter by tool metadata so new read tools
