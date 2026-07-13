@@ -39,10 +39,13 @@ export function TallyBars({
   options,
   tallies,
   correct,
+  picked,
 }: {
   options: string[];
   tallies: Tallies;
   correct?: Choice | null;
+  /** The viewer's own choice — rings that row and tags it "you" (player view). */
+  picked?: Choice | null;
 }) {
   const max = Math.max(1, ...LETTERS.map((l) => tallies[l]));
   return (
@@ -51,6 +54,7 @@ export function TallyBars({
         const letter = LETTERS[i]!;
         const count = tallies[letter];
         const isCorrect = correct === letter;
+        const isPicked = picked === letter;
         return (
           <div key={letter} className="flex items-center gap-3">
             <span
@@ -58,14 +62,21 @@ export function TallyBars({
             >
               {letter}
             </span>
-            <div className="relative h-8 flex-1 overflow-hidden rounded bg-neutral-800/60">
+            <div
+              className={`relative h-8 flex-1 overflow-hidden rounded bg-neutral-800/60 ${
+                isPicked ? 'ring-2 ring-white/70' : ''
+              }`}
+            >
               <div
                 className={`h-full transition-[width] duration-300 ${isCorrect ? 'bg-emerald-600/70' : 'bg-neutral-600/60'}`}
                 style={{ width: `${(count / max) * 100}%` }}
               />
-              <span className="absolute inset-0 flex items-center px-3 text-sm">
+              <span className="absolute inset-0 flex items-center gap-2 px-3 text-sm">
                 {correct != null && (isCorrect ? '✓ ' : '✗ ')}
-                {opt}
+                <span className="truncate">{opt}</span>
+                {isPicked && (
+                  <span className="rounded bg-white/20 px-1.5 text-xs font-semibold">you</span>
+                )}
               </span>
             </div>
             <span className="w-10 text-right tabular-nums text-neutral-400">{count}</span>

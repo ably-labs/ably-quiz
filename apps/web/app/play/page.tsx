@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { answersChannel, type Choice } from '@ably-quiz/core';
 import { useEffect, useMemo, useState } from 'react';
-import { AnswerButtons, QuestionCard } from '@/components/quiz';
+import { AnswerButtons, Countdown, QuestionCard, TallyBars } from '@/components/quiz';
 import { Lobby } from '@/components/Lobby';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useQuizId } from '@/hooks/useQuizId';
@@ -103,6 +103,9 @@ export default function PlayPage() {
       {(view.phase === 'asking' || view.phase === 'locked') && view.question && (
         <div className="space-y-6">
           <QuestionCard prompt={view.question.prompt} />
+          {view.phase === 'asking' && (
+            <Countdown startedAt={view.question.startedAt} limitMs={view.question.limitMs} />
+          )}
           {view.phase === 'locked' ? (
             <p className="text-center text-neutral-400">
               Answers locked{pick ? ` — you picked ${pick.choice}` : ''}.
@@ -124,20 +127,33 @@ export default function PlayPage() {
       )}
 
       {view.phase === 'revealed' && view.question && (
-        <div className="space-y-4 text-center">
+        <div className="space-y-5">
           <QuestionCard prompt={view.question.prompt} />
-          {pick ? (
-            pick.choice === view.correct ? (
-              <p className="text-2xl font-bold text-emerald-400">✓ Correct!</p>
+          <div className="text-center">
+            {pick ? (
+              pick.choice === view.correct ? (
+                <p className="text-2xl font-bold text-emerald-400">✓ Correct!</p>
+              ) : (
+                <p className="text-2xl font-bold text-rose-400">
+                  ✗ You picked {pick.choice} — correct was {view.correct}
+                </p>
+              )
             ) : (
-              <p className="text-2xl font-bold text-rose-400">
-                ✗ You picked {pick.choice} — correct was {view.correct}
-              </p>
-            )
-          ) : (
-            <p className="text-xl text-neutral-400">No answer — correct was {view.correct}</p>
-          )}
-          <p className="text-neutral-400">{me?.score ?? 0} pts total</p>
+              <p className="text-xl text-neutral-400">No answer — correct was {view.correct}</p>
+            )}
+          </div>
+          <div>
+            <p className="mb-2 text-center text-xs tracking-widest text-neutral-500 uppercase">
+              What everyone picked
+            </p>
+            <TallyBars
+              options={view.question.options}
+              tallies={view.tallies}
+              correct={view.correct}
+              picked={pick?.choice ?? null}
+            />
+          </div>
+          <p className="text-center text-neutral-400">{me?.score ?? 0} pts total</p>
         </div>
       )}
 
