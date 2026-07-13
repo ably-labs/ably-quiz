@@ -44,8 +44,8 @@
 
 - [x] S4.1 agent runner + registry loader
 - [x] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
-- [x] S4.3 roster of **four** (matt-gpt deferred — no OpenAI key) + ably-digest + study script + cribs
-- [ ] S4.4 agent host on Vercel (Fluid, lease, heartbeat, re-trigger) + local runner
+- [x] S4.3 roster of **five** (`matt-gpt` added 2026-07-13 once an OpenAI key landed) + ably-digest + study script + cribs
+- [ ] S4.4 **on-demand agents** (create-time checklist → declarative roster; host-triggered in-app `/api/agent-turn`; presence=thinking-indicator). Redesigned — see "S4.4 + S6 redesign" below. `agents:start` kept as dev harness.
 - [ ] S4.5 UI: agent chips, thinking drawer, quips
 - [ ] S4.6 commentator
 - [ ] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison)
@@ -91,6 +91,73 @@ so `agents:study` can run before the cribs exist. To run the field live, source
 the real xAI key for `matt-grok` (`~/.provider-keys.env`); the
 three Claudes need only `ANTHROPIC_API_KEY`.
 
+## S4.4 + S6 redesign (agreed with Matt, 2026-07-13) — on-demand agents + MCP MCP
+
+> Supersedes the BRIEF's S4.4 ("agent host on Vercel: Fluid, lease, heartbeat, re-trigger")
+> and S6.2 ("prod service account"). Recorded here as the authoritative design per §B0
+> (never diverge silently). Rationale + code references below so the build doesn't re-derive it.
+
+### On-demand agents (S4.4, rewritten)
+
+Agents are **not a long-lived process**. The persistent `pnpm agents:start` runner (S4.2) is
+retained only as a dev/local harness; the real model is **per-question, request-based invocation
+inside the running app** — no separate process, no Fluid lease/heartbeat/re-trigger to keep alive.
+
+- **Roster is declarative, not presence.** At create time the host sees an **agent checklist**
+  (all four checked by default, uncheck to exclude); the chosen set is written into quiz config
+  (LiveObjects/`StoredQuiz`). The AGENTS column reads that — an agent is "present" because it's
+  *declared*, and is always assumed ready for the next question.
+- **Presence = a transient "thinking/working" indicator only** (optional), shown while a turn runs
+  — not persistent membership. (Matt: "present for an agent in this model is really … thinking and working.")
+- **Trigger = host, in-app.** When the host broadcasts a question it POSTs `/api/agent-turn` for
+  each active agent. That handler runs the existing tested answer core (`runner.ts` `answerQuestion`
+  → build prompt from persona + crib + digest → one model call), publishes to the same answer
+  fan-in humans use (`quiz-answers:{id}`), streams thinking via AIT for its ~6s life, and returns.
+  No Ably integration-rule / webhook (rejected as overcomplication). Per-turn try/catch = isolation.
+- **No cold-start concern** — it's a request handler in the already-warm app, not an idle serverless fn.
+- Scoring/reveal/tug-of-war unchanged — the fan-in is already decoupled from presence/process, which
+  is what makes this a drop-in. (See the S4.3 auto-lock fix: host gates on the per-idx answer count.)
+
+### MCP MCP grounding (S6, rewritten)
+
+Optional live grounding: agents query **MCP** (the org-knowledge MCP) at question time. Auth is
+**per-quiz-session host OAuth, client-side only** — the Janus model applied to the quiz. No server-stored
+credential (a stored key is an attack surface — Matt's call; drops the BRIEF's service-account path even
+though a client_credentials M2M path exists in MCP).
+
+Flow:
+1. Quiz **DCR-registers** once as an OAuth client of `ably-core-mcp` (public client + PKCE).
+2. Host clicks **"Authenticate agents"** → browser OAuth → **Okta SSO** → 1h access token held in the
+   **quiz controller (browser session)**, never persisted server-side and **never logged**. Until then,
+   agents run ungrounded (or are disabled — host's choice).
+3. Per agent-turn the browser passes the token with the request; `/api/agent-turn` opens an MCP
+   `/mcp` connection with that token **+ `?allowedTools=<read-only set>`**, agent uses
+   `searchAblyTools`/`callTool`/`getContextDetail`, and the handler **scrubs the token from logs +
+   drops it after the response** (request-lifecycle only).
+4. **Read-only enforcement is at the MCP level** (where it belongs): the `?allowedTools=` session
+   allowlist + Okta-group role scoping, backed by an injected system instruction ("only read; only
+   public/company-shared resources; make the conservative call") as belt-and-braces.
+5. Token dies at quiz end; 1h TTL is the backstop.
+
+### MCP facts (verified in `~/Projects/ably/ably-os`, 2026-07-13)
+
+- Cloudflare-Worker MCP (`@cloudflare/workers-oauth-provider@0.2.2`), **DCR open** — `/authorize` gates
+  only on Okta SSO + `mcp_*` groups, not a client allowlist (`mcp/okta-handler.ts:35`); `/register`,
+  `/authorize`, `/token` wired (`mcp/index.ts:1835`). Access token TTL **3600s**.
+- Endpoints: base `https://your-mcp-server.example.com` (this is the **prod** target — build
+  against it per Matt), MCP on `/mcp` (streamable-http) or `/sse`; dev is `…-dev.example.com`.
+- `allowedTools` allowlist is plumbed authorize→props→session (`mcp/okta-handler.ts:84,269`; prop at
+  `mcp/index.ts:142`). Slim mode (default) = 5 meta-tools; `?mode=full` = all ~150.
+- Deferred: verify a live DCR registration + confirm the exact `allowedTools` enforcement point in
+  `callTool`, and whether `ToolMetadata` carries a read/write flag (auto-derive the allowlist vs curate).
+
+### Follow-ups (not quiz blockers)
+
+- **MCP `?readOnly=true` mode** — a server-side read-only filter by tool metadata so new read tools
+  appear automatically (the `allowedTools` allowlist doesn't auto-update). Small MCP PR; Matt's idea.
+- More general (non-Okta) MCP endpoints later — for now Okta-gating is fine (internal quiz; anyone can
+  fork and point at their own MCP endpoint + agents — nothing exposed, it's just an env var).
+
 ## S5 — Polish & quiz-day readiness
 
 - [ ] S5.1 counterfactual "by the way…" panel
@@ -101,8 +168,8 @@ three Claudes need only `ANTHROPIC_API_KEY`.
 
 ## S6 — Week 2: MCP + open-source
 
-- [ ] S6.1 fast-model MCP router in runner
-- [ ] S6.2 Ably MCP wiring (dev OAuth; prod service account per security team)
+- [ ] S6.1 fast-model MCP router in the agent-turn handler
+- [ ] S6.2 **MCP MCP wiring** — host OAuth (DCR + Okta), client-side per-session token, `?allowedTools=` read-only, no service account. Redesigned — see "S4.4 + S6 redesign" above.
 - [ ] S6.3 MCP-powered study()
 - [ ] S6.4 PR-your-own-agent docs + CI (dev-kit harness)
 - [ ] S6.5 open-source pass (Ably Labs)
@@ -143,6 +210,9 @@ _(none — the S3-gate scale question is resolved: Matt scoped the PoC to ≤150
 - **S3.5 (defensive store writes).** `AblyLiveStore.write` now swallows+warns on failure instead of leaving a rejected fire-and-forget promise — a coalesced flush can race a closing connection (host refresh/unload), which otherwise crashed Node and logged noisily in the browser. The host re-writes whole values on every change, so a dropped best-effort write is recoverable.
 
 ## Enhancements (from Matt's 2026-07-13 playtest — landed)
+
+- **`matt-gpt` joins the field (OpenAI, `gpt-5.3-chat-latest`).** Added once an `OPENAI_API_KEY` landed — one folder (`agents/matt-gpt/`) + committed crib, per the S4.3 "drops in later" design. Model chosen live from the OpenAI models API (a `*-chat-latest` non-reasoning flagship — fast, strong, and compatible with the runner's streaming `chat.completions` path); verified live end-to-end (connected, answered q0 → correct in 2.8s). **Deviation (`providers.ts`):** OpenAI's current models reject `max_tokens` and require `max_completion_tokens`, so `streamOpenAiCompatible` now branches — `max_completion_tokens` for OpenAI, `max_tokens` for xAI (grok, unchanged). Env: the real xAI key lives in `~/.provider-keys.env` (the `.env.local` value was a placeholder); the pasted `OPENAI_API_KEY` had the template's trailing `# later — Matt GPT` comment glued on — both fixed in the gitignored `.env.local`, never committed.
+
 
 - **S4.3 live 4-agent smoke — PASSED.** The full field (`matt-opus`/`sonnet`/`fable`/`grok`) ran live against real Ably end-to-end: all four join the roster, receive each question, think, answer on the humans' fan-in, and score to podium. Grounding confirmed (all four correctly answered the Ably-internal AIT question); model speed ordering matches the S0 spike (grok ~1s → fable ~6s). Run via `pnpm agents:start --quiz <id> --base http://localhost:3000` with the real xAI key sourced from `~/.provider-keys.env` into the runner env (dotenv doesn't override an already-set var, so it wins over the `.env.local` placeholder). This was S4.3's last open verification item.
 - **Auto-lock race fixed (host).** The smoke surfaced an intermittent bug: on a question transition the host auto-locked after only the *fastest* agent answered, dropping the slower three (they scored 0 that question). Root cause in `useHostQuiz`: the auto-lock "everyone answered" test read the LiveObjects scoreboard's `answered` flags, which lag a transition — 3 stale-`true` from the previous question + the fast answerer tripped `>= presentCount`. Fixed by gating on the engine's authoritative per-idx answer count (`getAnswerLog().filter(e => e.idx === openIdx)`, surfaced through `answersIn`) instead of the lag-prone flag. Regression test in `quizmaster.test.ts` locks the per-idx-isolation invariant; re-run smoke confirmed all 5 questions counted 4/4 across every transition.
