@@ -5,6 +5,7 @@ import {
   parseAnswerMessage,
   parseControlMessage,
   questionDefSchema,
+  quizConfigSchema,
   scoreboardEntrySchema,
 } from './protocol';
 
@@ -91,6 +92,26 @@ describe('question definition', () => {
       questionDefSchema.safeParse({ prompt: 'Q?', options: ['only'], correctIndex: 0, limitMs: 1 })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('quiz config', () => {
+  const base = {
+    scoringAlgoId: 'classic',
+    questionCount: 5,
+    defaultLimitMs: 20000,
+    streakEnabled: false,
+  };
+
+  it('accepts a config without an agent roster (declared roster is optional)', () => {
+    expect(quizConfigSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('accepts a declared agent roster and rejects a malformed entry', () => {
+    const agent = { slug: 'matt-fable', name: 'Matt Fable', emoji: '🎲', owner: 'Matt', model: 'claude-fable-5' };
+    expect(quizConfigSchema.safeParse({ ...base, agents: [agent] }).success).toBe(true);
+    // missing required display fields (name/emoji/owner/model) → rejected
+    expect(quizConfigSchema.safeParse({ ...base, agents: [{ slug: 'x' }] }).success).toBe(false);
   });
 });
 

@@ -131,7 +131,7 @@ export default function HostPage() {
         </section>
       )}
 
-      <Lobby members={members} />
+      <Lobby members={members} agents={quiz.config.agents} />
     </main>
   );
 }

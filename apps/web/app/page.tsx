@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  type AgentRosterEntry,
   DEFAULT_ALGO_ID,
   LIMIT_DEFAULT_S,
   LIMIT_MAX_S,
@@ -74,6 +75,9 @@ const SAMPLE_ROWS: GridRow[] = [
   },
 ];
 
+/** An agent available to play, as returned by GET /api/agents. */
+type AvailableAgent = AgentRosterEntry & { provider: string };
+
 /** True on localhost / .local / .test hosts — gates dev-only helpers. */
 function isLocalHost(): boolean {
   if (typeof window === 'undefined') return false;
@@ -126,6 +130,25 @@ export default function CreatePage() {
   const [devLike, setDevLike] = useState(false);
   useEffect(() => setDevLike(isLocalHost()), []);
 
+  // The agent roster (§S4.4): fetch who's available, default all checked, let the
+  // host uncheck any. The chosen set is stored in config as the declarative roster.
+  const [available, setAvailable] = useState<AvailableAgent[]>([]);
+  const [excluded, setExcluded] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    let alive = true;
+    void fetch('/api/agents')
+      .then((r) => (r.ok ? r.json() : { agents: [] }))
+      .then((d: { agents?: AvailableAgent[] }) => {
+        if (alive) setAvailable(d.agents ?? []);
+      })
+      .catch(() => {
+        /* no agents endpoint / none available — humans-only quiz */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const { questions, errors, badRows } = useMemo(
     () => validate(rows, defaultLimitS),
     [rows, defaultLimitS],
@@ -136,12 +159,16 @@ export default function CreatePage() {
   function handleCreate() {
     if (!canCreate) return;
     const quizId = generateQuizId();
+    const agents: AgentRosterEntry[] = available
+      .filter((a) => !excluded.has(a.slug))
+      .map(({ slug, name, emoji, owner, model }) => ({ slug, name, emoji, owner, model }));
     const config: QuizConfig = {
       scoringAlgoId: algoId,
       questionCount: questions.length,
       defaultLimitMs: defaultLimitS * 1000,
       streakEnabled,
       autoReveal,
+      ...(agents.length > 0 ? { agents } : {}),
     };
     const quiz: StoredQuiz = { quizId, createdAt: Date.now(), questions, config };
     saveQuiz(quiz);
@@ -264,6 +291,54 @@ export default function CreatePage() {
           on the locked screen and reveal manually for suspense.
         </p>
       </fieldset>
+
+      {available.length > 0 && (
+        <fieldset className="mb-8">
+          <legend className="text-sm font-semibold text-neutral-300">
+            Agents{' '}
+            <span className="font-normal text-neutral-500">
+              — {available.length - excluded.size} of {available.length} playing
+            </span>
+          </legend>
+          <p className="mt-1 mb-3 max-w-2xl text-xs text-neutral-500">
+            AI contestants join the quiz alongside humans. All are in by default — uncheck any you
+            want to sit out.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {available.map((a) => {
+              const on = !excluded.has(a.slug);
+              return (
+                <label
+                  key={a.slug}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm ${
+                    on ? 'border-ably/60 bg-ably/5' : 'border-neutral-800 opacity-60'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    onChange={(e) =>
+                      setExcluded((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.delete(a.slug);
+                        else next.add(a.slug);
+                        return next;
+                      })
+                    }
+                  />
+                  <span className="text-lg">{a.emoji}</span>
+                  <span className="flex-1">
+                    <span className="block font-medium">{a.name}</span>
+                    <span className="block text-xs text-neutral-500">
+                      {a.model} · built by {a.owner}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+      )}
 
       <button
         type="button"

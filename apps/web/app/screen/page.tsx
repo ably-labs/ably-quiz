@@ -60,7 +60,7 @@ export default function ScreenPage() {
         )}
       </header>
 
-      {view.phase === 'lobby' && <Lobby members={members} />}
+      {view.phase === 'lobby' && <Lobby members={members} agents={view.config?.agents} />}
 
       {inQuestion && (
         <section className="space-y-8">

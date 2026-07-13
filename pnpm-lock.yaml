@@ -41,6 +41,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ably-quiz/agent-runner':
+        specifier: workspace:*
+        version: link:../../packages/agent-runner
       '@ably-quiz/core':
         specifier: workspace:*
         version: link:../../packages/core

@@ -72,6 +72,20 @@ export const answerMessageSchema = z.object({
 });
 export type AnswerMessage = z.infer<typeof answerMessageSchema>;
 
+// --- Agent roster (§S4.4 on-demand) -----------------------------------------
+// The set of agents chosen to play, declared at CREATE time. Display fields are
+// copied from each agent's manifest so the roster renders without the runner
+// running: an agent is "present" because it's declared, and is invoked
+// per-question (a request-based turn) rather than as a persistent process.
+export const agentRosterEntrySchema = z.object({
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  emoji: z.string().min(1),
+  owner: z.string().min(1),
+  model: z.string().min(1),
+});
+export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
+
 // --- LiveObjects shapes (§B2.3) ---------------------------------------------
 export const quizConfigSchema = z.object({
   scoringAlgoId: z.string().min(1),
@@ -82,6 +96,9 @@ export const quizConfigSchema = z.object({
    *  time's up). Optional; the host treats `undefined` as `true`. Turn off to
    *  hold on the locked screen and reveal manually for suspense. */
   autoReveal: z.boolean().optional(),
+  /** Agents declared to play, chosen at create time (§S4.4). Published in config
+   *  so /host and /screen render the roster; the host invokes each per question. */
+  agents: z.array(agentRosterEntrySchema).optional(),
 });
 export type QuizConfig = z.infer<typeof quizConfigSchema>;
 

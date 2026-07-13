@@ -96,7 +96,7 @@ export default function PlayPage() {
       {view.phase === 'lobby' && (
         <>
           <p className="mb-4 text-neutral-400">Waiting for the host to start…</p>
-          <Lobby members={members} />
+          <Lobby members={members} agents={view.config?.agents} />
         </>
       )}
 
