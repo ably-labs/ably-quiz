@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "tsx src/cli.ts",
+    "study": "tsx src/study-cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

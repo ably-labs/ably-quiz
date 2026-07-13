@@ -23,6 +23,10 @@ export const agentManifestSchema = z.object({
   personality: z.string().optional(),
   /** Optional committed crib file (relative to the agent dir), injected at answer time. */
   crib: z.string().optional(),
+  /** Optional named pre-learning strategy run by `agents:study` to (re)generate the
+   *  crib (§B2.7). Currently `"ably-docs"` (scrape the public docs index). Custom
+   *  code studies via `agent.ts` arrive with the S4.7 dev kit. */
+  study: z.string().optional(),
   /** Optional MCP grounding (S6). */
   mcp: z.object({ url: z.string().min(1), auth: z.string().min(1) }).optional(),
 });

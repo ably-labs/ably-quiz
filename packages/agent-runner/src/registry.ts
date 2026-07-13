@@ -62,8 +62,14 @@ export async function loadRegistry(agentsDir: string): Promise<Registry> {
       try {
         loaded.crib = await readFile(join(dir, parsed.data.crib), 'utf8');
       } catch (err) {
-        errors.push({ slug: name, dir, error: `crib "${parsed.data.crib}": ${msg(err)}` });
-        continue;
+        // A declared-but-missing crib is NOT fatal: it just hasn't been generated
+        // yet (`agents:study` writes it — and needs the agent loadable to do so).
+        // Load without the crib; the agent still runs, grounded by the shared
+        // digest. Any OTHER read failure (e.g. permissions) is a real error.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          errors.push({ slug: name, dir, error: `crib "${parsed.data.crib}": ${msg(err)}` });
+          continue;
+        }
       }
     }
     agents.push(loaded);

@@ -15,3 +15,4 @@ export * from './providers';
 export * from './registry';
 export * from './runner';
 export * from './think-stream';
+export * from './study';

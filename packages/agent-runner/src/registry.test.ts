@@ -35,6 +35,15 @@ beforeAll(async () => {
     },
     { 'crib.md': 'STUDIED FACTS' },
   );
+  await agentDir('no-crib-yet', {
+    name: 'No Crib Yet',
+    slug: 'no-crib-yet',
+    emoji: 'x',
+    owner: 'o',
+    provider: 'anthropic',
+    model: 'm',
+    crib: 'crib.md',
+  }); // declares a crib that hasn't been generated yet (pre-`agents:study`)
   await agentDir('bad-owner', {
     name: 'Bad',
     slug: 'bad-owner',
@@ -69,8 +78,15 @@ describe('loadRegistry', () => {
     expect(fable?.manifest.model).toBe('claude-fable-5');
   });
 
-  it('loads only the valid agent (invalid ones excluded)', () => {
-    expect(reg.agents.map((a) => a.manifest.slug)).toEqual(['matt-fable']);
+  it('loads valid agents and excludes invalid ones', () => {
+    expect(reg.agents.map((a) => a.manifest.slug)).toEqual(['matt-fable', 'no-crib-yet']);
+  });
+
+  it('loads an agent whose declared crib is not generated yet — without the crib, not as an error', () => {
+    const a = reg.agents.find((x) => x.manifest.slug === 'no-crib-yet');
+    expect(a).toBeDefined();
+    expect(a?.crib).toBeUndefined();
+    expect(reg.errors.find((e) => e.slug === 'no-crib-yet')).toBeUndefined();
   });
 
   it('reports the missing-owner agent as an error', () => {
