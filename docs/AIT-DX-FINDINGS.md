@@ -115,3 +115,29 @@ only thinking-stream + presence touch AIT.
 it in S4.2, pinned to SDK `0.5.0`; answers stay on the plain fan-in. Once S4.2 is
 built and exercised, pass this finding + the promote-to-first-class-API ask to the
 AIT team.
+
+### Shipped (S4.2, 2026-07-13) — the workaround in the live runner
+
+Built exactly as decided, in `packages/agent-runner/src/live-agent.ts`
+(`@ably/ai-transport/vercel`, SDK pinned `0.5.0`). Per agent channel
+`quiz-agent:{quizId}:{slug}`: a co-located `ClientSession` publishes the question
+as a user turn (`view.send(UIMessageCodec.createUserMessage(...))`), we convert
+the returned `ClientRun` to an `Invocation` **in-process** (`.toInvocation()` — no
+HTTP), hand it to our `AgentSession.createRun(...)`, `start()` (locates the
+self-published trigger), `pipe()` the visible think-aloud, and `end({reason:'complete'})`.
+The S4.1 runner emits raw model deltas, so a ~50-line pure mapper
+(`think-stream.ts`) turns `onThinking` deltas into the
+`start · text-start · text-delta* · text-end · finish` `UIMessageChunk` sequence,
+clipping at the answer JSON so only the visible think-aloud streams.
+
+**Confirmed end-to-end live (app `YOUR_APP_ID`, `matt-fable`/`claude-fable-5`):** two
+questions, each produced a full materialized run in agent-channel history
+(`ai-input` self-trigger → `ai-run-start` → `ai-step-start` → `ai-output` →
+`ai-step-end` → `ai-run-end`) with the think-aloud text on the `ai-output`
+appends (e.g. _"From the Latin aurum — gold's classical name…"_). Presence fit
+with zero friction (joining→thinking→answered). Everything the spike predicted
+held; nothing needed to change. **The finding + the promote-to-first-class-API
+ask (an agent-minted trigger, or `createRun({input})`) is now ready to hand to
+the AIT team** — the workaround is real, cheap, and shipped, but it relies on
+`run.start()` not validating the trigger's publisher, which a future preview
+version could tighten (hence the `0.5.0` pin).

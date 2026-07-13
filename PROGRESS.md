@@ -43,13 +43,36 @@
 ## S4 — Agents
 
 - [x] S4.1 agent runner + registry loader
-- [ ] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
+- [x] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
 - [ ] S4.3 roster of five + ably-digest + study script + cribs
 - [ ] S4.4 agent host on Vercel (Fluid, lease, heartbeat, re-trigger) + local runner
 - [ ] S4.5 UI: agent chips, thinking drawer, quips
 - [ ] S4.6 commentator
 - [ ] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison)
 - [ ] **GATE: dry run incl. agent-host kill/recovery test + dev-kit 10-minute experience**
+
+**Stage note (S4.2):** `matt-fable` joins a live quiz end-to-end on real Ably. The
+tested S4.1 core (`answerQuestion`) is reused unchanged; S4.2 adds `live-agent.ts`
+(the only I/O module) + `think-stream.ts` (pure delta→`UIMessageChunk` mapper, 7
+unit tests) + a `cli.ts` entrypoint (`pnpm agents:start --quiz <id> [--agent] [--base]`),
+plus `agents/matt-fable/agent.json`. The agent wears two presences — roster on
+`quiz:{id}` (`{name,emoji,model,owner}`, clientId `a:{slug}` → the AGENTS column)
+and AIT status on `quiz-agent:{id}:{slug}` (`joining→idle→thinking→answered`).
+Thinking streams over AIT via the **self-invocation workaround** (SDK pinned
+`0.5.0`, `@ably/ai-transport/vercel`): a co-located `ClientSession` publishes the
+question as the triggering user turn, converted in-process to an Invocation and
+piped through the `AgentSession` run. **Answers stay on the plain fan-in**
+(`quiz-answers:{id}`, `{idx,choice,confidence?}`), same clock/contract as humans.
+Deadline budget = the runner's existing `limitMs − 2000` abort+force-guess;
+supervisor = per-question and per-agent try/catch (one agent's failure never
+stalls the quiz or the others — Fluid's error isolation on Vercel is S4.4).
+**Verified live vs app `YOUR_APP_ID`:** roster showed `a:matt-fable <agent>`; both
+answers landed on the fan-in (`C✓@5465ms`, `C✓@5546ms`, score 1724, `/screen`
+tally + tug-of-war confirmed); the AIT channel materialized 2 full runs
+(`ai-input`×2 self-triggers · `ai-run-start`/`ai-step-start`/`ai-output`/`ai-step-end`/`ai-run-end`),
+the streamed think-aloud correctly clipped at the answer JSON (e.g. _"From the
+Latin aurum — gold's classical name…"_). The five-agent roster + shared digest +
+study script is S4.3; the on-screen thinking drawer is S4.5.
 
 ## S5 — Polish & quiz-day readiness
 
@@ -76,6 +99,9 @@
 - **S3.3 (T₀ race, engine):** answers can reach the quizmaster before the question's server timestamp T₀ is captured from the publish echo. The engine now BUFFERS such answers per question (dedup locked in) and scores them the instant T₀ lands — fixing dropped answers (sim went 11/15 → 15/15). Unit-tested.
 - **S3.1 (host storage):** the full quiz definition is stored in `localStorage` (not the brief's `sessionStorage`) so the create tab, `/host`, and `/screen` on the same host machine share it and it survives a refresh for recovery. Still host-machine-only; never shared. See `apps/web/lib/quiz-storage.ts`.
 - **S0:** Spike omits the `temperature` param by default — newer Claude models (Opus 4.8 / Sonnet 5 / Fable 5) reject it (`400 … "temperature is deprecated for this model"`). Providers run at their default sampling; still settable via `SPIKE_TEMPERATURE` for providers that accept it. Carry forward to the S4 agent runner. Bumped `maxTokens` 300 → 400 after one truncated no-answer in a smoke run; full run then hit 100% valid-answer rate.
+- **S4.2 (agent-runner deps):** added `@ably/ai-transport@0.5.0` (pinned exact — the self-invocation workaround is validated only against this version, per [docs/AIT-DX-FINDINGS.md](docs/AIT-DX-FINDINGS.md)), `ably`, `ai@^6` (peer of the AIT vercel entry; supplies the `UIMessageChunk` types), plus `dotenv` + `tsx` for the CLI. The live wiring (`live-agent.ts`, `cli.ts`) is deliberately **not** re-exported from the package index — `apps/web` transpiles this package (S4.5 UI) and must not bundle the server-side `@ably/ai-transport/vercel` + `ably` runtime; only the pure `think-stream` (type-only `ai` import) is exported.
+- **S4.2 (env for `pnpm dev`):** `next dev` loads `.env.local` from its own cwd (`apps/web`), not the repo root, so `/api/ably-auth` returned `500 ABLY_API_KEY not configured`. Added a **gitignored symlink `apps/web/.env.local → ../../.env.local`** so the dev server sees the key (matches what [docs/TESTING.md](docs/TESTING.md) already assumes). Untracked/local-only; not part of the commit.
+- **S4.2 (AIT wire shape, informational):** the agent-channel history materializes the full run lifecycle (`ai-input` self-trigger · `ai-run-start` · `ai-step-start` · `ai-output` · `ai-step-end` · `ai-run-end`). The streamed think-aloud rides `ai-output` messages (append-rolled — some are empty boundary appends). No decoding needed for S4.2 (screens use the client-side `useView` in S4.5); noted so the inspector work in S4.5 knows the shape.
 
 ## Blocked
 
