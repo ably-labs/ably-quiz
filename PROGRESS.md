@@ -46,7 +46,7 @@
 - [x] S4.2 AIT sessions (presence lifecycle, streamed thinking, quips, deadline budget, supervisor)
 - [x] S4.3 roster of **five** (`matt-gpt` added 2026-07-13 once an OpenAI key landed) + ably-digest + study script + cribs
 - [ ] S4.4 **on-demand agents** (create-time checklist → declarative roster; host-triggered in-app `/api/agent-turn`; presence=thinking-indicator). Redesigned — see "S4.4 + S6 redesign" below. `agents:start` kept as dev harness.
-- [ ] S4.5 UI: agent chips, thinking drawer, quips
+- [x] S4.5 UI: agent chips (roster, Slice A) + on-screen thinking wall + quips on `/screen` (2026-07-14)
 - [ ] S4.6 commentator
 - [ ] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison)
 - [ ] **GATE: dry run incl. agent-host kill/recovery test + dev-kit 10-minute experience**
@@ -130,9 +130,14 @@ inside the running app** — no separate process, no Fluid lease/heartbeat/re-tr
 - **Verified live, NO runner process:** 5 declared agents shown on host; Start fired 5 turns; Q1 & Q2 each
   `5 of 5` answered + auto-locked; podium scored all five by name (Grok › GPT › Opus › Sonnet › Fable). Direct
   `/api/agent-turn` tests: xAI/OpenAI/Anthropic all answer correctly, grounded (AIT question), HTTP 200.
-- **Remaining:** Slice C = the AIT thinking-stream into `/api/agent-turn` + the presence "thinking" indicator
-  (S4.5 on-screen thinking) and the MCP MCP grounding (below). Prod hardening: a worst-case ~18s turn can
-  exceed a Vercel serverless timeout — address when deploying.
+- **Slice C — on-screen thinking (S4.5): LANDED (2026-07-14).** `/api/agent-turn` streams the think-aloud
+  (throttled ~350ms) to `quiz-agent:{id}:{slug}` and a final `answered` with the quip; a new `useAgentThinking`
+  hook subscribes per declared agent and `<AgentThinkingWall>` renders it on `/screen` (thinking→answered per
+  card, reset per question). Player capability gained `subscribe`+`history` on `quiz-agent:{id}:*` (read-only).
+  Typed `agentThinkingSchema` + parser. Verified live: all 5 agents' reasoning + quips render on `/screen`
+  across questions. NB streamed via Ably REST from the stateless turn — no AIT self-invocation needed here.
+- **Remaining:** the MCP MCP grounding (below, allowlist finalized). Prod hardening: a worst-case ~18s
+  turn can exceed a Vercel serverless timeout — address when deploying.
 
 ### MCP MCP grounding (S6, rewritten)
 
