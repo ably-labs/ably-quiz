@@ -6,6 +6,7 @@ import { Lobby } from '@/components/Lobby';
 import { Countdown, LETTERS, QuestionCard, Scoreboard, TallyBars } from '@/components/quiz';
 import { useAbly } from '@/hooks/useAbly';
 import { useHostQuiz } from '@/hooks/useHostQuiz';
+import { useMcpAuth, type McpAuth } from '@/hooks/useMcpAuth';
 import { useQuizId } from '@/hooks/useQuizId';
 import { loadQuiz } from '@/lib/quiz-storage';
 
@@ -14,8 +15,9 @@ export default function HostPage() {
   const quiz = useMemo(() => (typeof quizId === 'string' ? loadQuiz(quizId) : null), [quizId]);
   const params = typeof quizId === 'string' && quiz ? { quizId, role: 'host' as const } : null;
   const { status, conn, error } = useAbly(params);
+  const mcpAuth = useMcpAuth(typeof quizId === 'string' ? quizId : null);
   const { state, correct, question, live, controls, answersIn, expectedAnswerers, busy, members } =
-    useHostQuiz(conn, quiz);
+    useHostQuiz(conn, quiz, mcpAuth.token);
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -56,6 +58,8 @@ export default function HostPage() {
         </div>
       </header>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
+
+      <McpAuthBanner mcp={mcpAuth} />
 
       {showQuestion && (
         <section className="mb-6 space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">
@@ -137,6 +141,46 @@ export default function HostPage() {
 
       <Lobby members={members} agents={quiz.config.agents} />
     </main>
+  );
+}
+
+/** MCP grounding auth (§S6). Optional: agents play ungrounded until the host
+ *  authenticates, then Anthropic agents can look up Ably knowledge (read-only). */
+function McpAuthBanner({ mcp }: { mcp: McpAuth }) {
+  const busy = mcp.status === 'starting' || mcp.status === 'exchanging';
+  if (mcp.status === 'authed') {
+    return (
+      <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-4 py-3 text-sm">
+        <span className="text-emerald-400">✓ Agents grounded with MCP</span>
+        <span className="text-neutral-500">read-only · this session only</span>
+        <button
+          type="button"
+          onClick={mcp.signOut}
+          className="ml-auto text-xs text-neutral-500 underline hover:text-neutral-300"
+        >
+          sign out
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-6 flex items-center gap-4 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm">
+      <div>
+        <p className="text-neutral-300">Agents are playing on their own knowledge.</p>
+        <p className="text-neutral-500">
+          Authenticate with MCP to let them look up company knowledge (read-only).
+          {mcp.error && <span className="text-red-400"> — {mcp.error}</span>}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={mcp.authenticate}
+        disabled={busy}
+        className="ml-auto shrink-0 rounded-lg border border-neutral-700 px-4 py-2 font-semibold text-ink hover:border-neutral-500 disabled:opacity-40"
+      >
+        {busy ? 'Connecting…' : 'Authenticate agents'}
+      </button>
+    </div>
   );
 }
 

@@ -37,6 +37,9 @@ export type HostControls = {
 export function useHostQuiz(
   conn: Connection | null,
   quiz: StoredQuiz | null,
+  /** Host's MCP token (§S6). When present, grounded agents look up Ably
+   *  knowledge; passed per turn, never stored server-side. */
+  mcpToken: string | null = null,
 ): {
   state: QuizState;
   /** Correct letter for the current question (host-only readout). */
@@ -273,10 +276,15 @@ export function useHostQuiz(
       void fetch('/api/agent-turn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quizId: quiz.quizId, slug: a.slug, question: payloadQuestion }),
+        body: JSON.stringify({
+          quizId: quiz.quizId,
+          slug: a.slug,
+          question: payloadQuestion,
+          ...(mcpToken ? { mcpToken } : {}),
+        }),
       }).catch(() => undefined);
     }
-  }, [state.phase, state.questionIdx, question, quiz]);
+  }, [state.phase, state.questionIdx, question, quiz, mcpToken]);
 
   useEffect(() => {
     if (state.phase !== 'locked') return;
