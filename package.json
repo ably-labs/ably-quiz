@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "pnpm --filter @ably-quiz/web dev",
     "build": "pnpm --filter @ably-quiz/web build",
+    "agents:start": "pnpm --filter @ably-quiz/agent-runner start",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

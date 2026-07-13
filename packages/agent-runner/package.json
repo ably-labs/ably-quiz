@@ -3,17 +3,25 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Plain-Node agent runner: registry loader + streamed think-aloud → strict-JSON answer core (BRIEF §B2.7). AIT session wiring lands in S4.2.",
+  "description": "Plain-Node agent runner: registry loader, streamed think-aloud → strict-JSON answer core, and the live AIT/Ably wiring that puts an agent in a quiz (BRIEF §B2.7).",
   "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
+    "start": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ably-quiz/core": "workspace:*",
+    "@ably/ai-transport": "0.5.0",
     "@anthropic-ai/sdk": "^0.110.0",
+    "ably": "^2.24.0",
+    "ai": "^6.0.219",
+    "dotenv": "^17.4.2",
     "openai": "^6.45.0",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.0"
   }
 }
