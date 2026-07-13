@@ -5,6 +5,7 @@ import { getAlgo } from '@ably-quiz/core';
 import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
 import {
+  AgentThinkingWall,
   Countdown,
   Podium,
   QuestionCard,
@@ -13,6 +14,7 @@ import {
   TugOfWar,
 } from '@/components/quiz';
 import { useAbly, usePresence } from '@/hooks/useAbly';
+import { useAgentThinking } from '@/hooks/useAgentThinking';
 import { useQuizId } from '@/hooks/useQuizId';
 import { useQuizState } from '@/hooks/useQuizState';
 
@@ -25,6 +27,12 @@ export default function ScreenPage() {
   const { conn } = useAbly(params);
   const view = useQuizState(conn, quizId ?? '');
   const members = usePresence(conn, quizId ?? '', { name: 'screen', enter: false });
+  const thinking = useAgentThinking(
+    conn,
+    quizId ?? '',
+    view.config?.agents ?? [],
+    view.question?.idx ?? -1,
+  );
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -70,6 +78,7 @@ export default function ScreenPage() {
           </div>
           <TallyBars options={q.options} tallies={view.tallies} />
           <TugOfWar scoreboard={view.scoreboard} />
+          <AgentThinkingWall agents={view.config?.agents ?? []} thinking={thinking} />
         </section>
       )}
 
@@ -88,6 +97,7 @@ export default function ScreenPage() {
               <TugOfWar scoreboard={view.scoreboard} />
             </div>
           </div>
+          <AgentThinkingWall agents={view.config?.agents ?? []} thinking={thinking} />
         </section>
       )}
 

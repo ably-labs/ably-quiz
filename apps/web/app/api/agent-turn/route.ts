@@ -12,9 +12,20 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { answerQuestion, loadRegistry, type Question } from '@ably-quiz/agent-runner';
-import { answersChannel } from '@ably-quiz/core';
+import { agentChannel, answersChannel, type AgentThinkingMessage } from '@ably-quiz/core';
 import Ably from 'ably';
 import { NextResponse } from 'next/server';
+
+/** Live think-aloud is the text before the answer JSON (the agent streams
+ *  reasoning first, then a `{…}`). Strip from the first brace for display. */
+function thinkAloud(text: string): string {
+  const brace = text.indexOf('{');
+  return (brace === -1 ? text : text.slice(0, brace)).trim();
+}
+
+/** Throttle streamed thinking to ~1 publish / THROTTLE_MS so a 5-agent field
+ *  doesn't flood Ably; the final `answered` message is always sent. */
+const THROTTLE_MS = 350;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,22 +79,50 @@ export async function POST(req: Request): Promise<Response> {
     'utf8',
   ).catch(() => undefined);
 
+  // Publish the think-aloud to the agent's own channel so /screen can show it
+  // live (§S4.5). Fire-and-forget as the agent thinks; never block the turn.
+  const rest = new Ably.Rest({ key: apiKey });
+  const thinking = rest.channels.get(agentChannel(quizId, slug));
+  const emitThinking = (msg: AgentThinkingMessage) => {
+    void thinking.publish({ name: 'thinking', data: msg, clientId: `a:${slug}` }).catch(() => {});
+  };
+  emitThinking({ slug, idx: question.idx, phase: 'thinking', text: '' });
+  let lastEmit = 0;
+
   // Run the tested answer core. A throw/timeout scores 0 — never stalls the quiz.
   let outcome;
   try {
-    outcome = await answerQuestion(agent.manifest, question, { digest, crib: agent.crib });
+    outcome = await answerQuestion(agent.manifest, question, {
+      digest,
+      crib: agent.crib,
+      onThinking: (_delta, full) => {
+        const now = Date.now();
+        if (now - lastEmit < THROTTLE_MS) return;
+        lastEmit = now;
+        emitThinking({ slug, idx: question.idx, phase: 'thinking', text: thinkAloud(full) });
+      },
+    });
   } catch (err) {
+    emitThinking({ slug, idx: question.idx, phase: 'answered', text: '(failed to answer)' });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'answer failed', slug },
       { status: 502 },
     );
   }
 
+  // Settle the drawer with the final reasoning + quip, whether or not it answered.
+  emitThinking({
+    slug,
+    idx: question.idx,
+    phase: 'answered',
+    text: outcome.thinking,
+    quip: outcome.quip,
+  });
+
   if (!outcome.choice) {
     return NextResponse.json({ slug, answered: false, timedOut: outcome.timedOut });
   }
 
-  const rest = new Ably.Rest({ key: apiKey });
   await rest.channels.get(answersChannel(quizId)).publish({
     name: 'answer',
     data: { idx: question.idx, choice: outcome.choice, confidence: outcome.confidence },

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   answerMessageSchema,
   controlMessageSchema,
+  parseAgentThinking,
   parseAnswerMessage,
   parseControlMessage,
   questionDefSchema,
@@ -29,6 +30,23 @@ describe('answer message', () => {
     expect(parseAnswerMessage({ idx: 1, choice: 'C' })).toEqual({ idx: 1, choice: 'C' });
     expect(parseAnswerMessage('nope')).toBeNull();
     expect(parseAnswerMessage({ idx: 1 })).toBeNull();
+  });
+});
+
+describe('agent thinking message (§S4.5)', () => {
+  it('parses a thinking-phase and an answered-phase message', () => {
+    expect(
+      parseAgentThinking({ slug: 'matt-grok', idx: 0, phase: 'thinking', text: 'Gold is Au…' }),
+    ).toEqual({ slug: 'matt-grok', idx: 0, phase: 'thinking', text: 'Gold is Au…' });
+    expect(
+      parseAgentThinking({ slug: 'matt-grok', idx: 0, phase: 'answered', text: '', quip: 'Easy.' }),
+    ).toMatchObject({ phase: 'answered', quip: 'Easy.' });
+  });
+
+  it('rejects an unknown phase or missing fields', () => {
+    expect(parseAgentThinking({ slug: 'x', idx: 0, phase: 'done', text: '' })).toBeNull();
+    expect(parseAgentThinking({ slug: 'x', phase: 'thinking', text: '' })).toBeNull();
+    expect(parseAgentThinking('nope')).toBeNull();
   });
 });
 

@@ -2,16 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { buildCapability, kindFromClientId, resolveClientId } from './auth';
 
 describe('buildCapability (§B2.5 matrix)', () => {
-  it('player: read main + LiveObjects + history, publish answers only, no agent access', () => {
+  it('player: read main + LiveObjects + history, publish answers, subscribe agent thinking', () => {
     const cap = buildCapability('player', 'q1');
     expect(cap).toEqual({
       'quiz:q1': ['subscribe', 'presence', 'object-subscribe', 'history'],
       'quiz-answers:q1': ['publish'],
+      'quiz-agent:q1:*': ['subscribe', 'history'],
     });
     // A player cannot subscribe to the fan-in answers channel.
     expect(cap['quiz-answers:q1']).not.toContain('subscribe');
     // History on main lets a refreshed player re-derive the in-flight question (S3.5).
     expect(cap['quiz:q1']).toContain('history');
+    // Agent access is read-only — players watch thinking, never publish it (§S4.5).
+    expect(cap['quiz-agent:q1:*']).not.toContain('publish');
+    expect(cap['quiz-agent:q1:*']).not.toContain('*');
   });
 
   it('host: full on all three of the quiz channel groups', () => {

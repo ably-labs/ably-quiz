@@ -86,6 +86,20 @@ export const agentRosterEntrySchema = z.object({
 });
 export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
+// --- Agent thinking (§S4.5 on-screen thinking) ------------------------------
+// Published to quiz-agent:{id}:{slug} during an on-demand turn so /screen can
+// show each agent's live think-aloud + status. Ephemeral, scoped to a question
+// idx: `phase:'thinking'` carries the accumulating think-aloud (throttled), and
+// a final `phase:'answered'` carries the settled reasoning + quip.
+export const agentThinkingSchema = z.object({
+  slug: z.string().min(1),
+  idx: z.number().int().nonnegative(),
+  phase: z.enum(['thinking', 'answered']),
+  text: z.string(),
+  quip: z.string().optional(),
+});
+export type AgentThinkingMessage = z.infer<typeof agentThinkingSchema>;
+
 // --- LiveObjects shapes (§B2.3) ---------------------------------------------
 export const quizConfigSchema = z.object({
   scoringAlgoId: z.string().min(1),
@@ -139,5 +153,10 @@ export function parseAnswerMessage(data: unknown): AnswerMessage | null {
 
 export function parseControlMessage(data: unknown): ControlMessage | null {
   const result = controlMessageSchema.safeParse(data);
+  return result.success ? result.data : null;
+}
+
+export function parseAgentThinking(data: unknown): AgentThinkingMessage | null {
+  const result = agentThinkingSchema.safeParse(data);
   return result.success ? result.data : null;
 }

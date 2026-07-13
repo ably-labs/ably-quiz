@@ -40,6 +40,9 @@ export function buildCapability(role: Role, quizId: string, slug?: string): Capa
       return {
         [main]: ['subscribe', 'presence', 'object-subscribe', 'history'],
         [answers]: ['publish'],
+        // Read the agents' live think-aloud (§S4.5). Subscribe-only: players and
+        // /screen watch the on-screen thinking; only the agent turn publishes.
+        [agentChannelPattern(quizId)]: ['subscribe', 'history'],
       };
     case 'host':
       return {

@@ -1,7 +1,8 @@
 'use client';
 
-import type { Choice, Kind, ScoreboardEntry, Tallies } from '@ably-quiz/core';
+import type { AgentRosterEntry, Choice, Kind, ScoreboardEntry, Tallies } from '@ably-quiz/core';
 import { useEffect, useState } from 'react';
+import type { AgentThinkState } from '@/hooks/useAgentThinking';
 
 export const LETTERS: Choice[] = ['A', 'B', 'C', 'D'];
 // Functional answer colours (distinct + always paired with the letter, so never
@@ -83,6 +84,58 @@ export function TallyBars({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** On-screen agent thinking (§S4.5): one card per declared agent showing its
+ *  live think-aloud while it works, then its settled reasoning + quip. */
+export function AgentThinkingWall({
+  agents,
+  thinking,
+}: {
+  agents: AgentRosterEntry[];
+  thinking: Record<string, AgentThinkState>;
+}) {
+  if (agents.length === 0) return null;
+  return (
+    <div>
+      <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">Agents thinking</h3>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {agents.map((a) => {
+          const t = thinking[a.slug];
+          const answered = t?.phase === 'answered';
+          const active = t != null && !answered;
+          return (
+            <div
+              key={a.slug}
+              className={`rounded-xl border p-3 transition-colors ${
+                active ? 'border-ably/60 bg-ably/5' : 'border-neutral-800 bg-neutral-900/40'
+              }`}
+            >
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-lg" aria-hidden>
+                  {a.emoji}
+                </span>
+                <span className="truncate font-semibold">{a.name}</span>
+                <span className="ml-auto shrink-0 text-xs tabular-nums">
+                  {answered ? (
+                    <span className="text-emerald-400">✓ answered</span>
+                  ) : active ? (
+                    <span className="animate-pulse text-ably">thinking…</span>
+                  ) : (
+                    <span className="text-neutral-600">ready</span>
+                  )}
+                </span>
+              </div>
+              {t?.text && <p className="line-clamp-3 text-sm text-neutral-400">{t.text}</p>}
+              {answered && t?.quip && (
+                <p className="mt-1 text-sm text-neutral-200 italic">“{t.quip}”</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
