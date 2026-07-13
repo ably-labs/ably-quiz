@@ -13,6 +13,16 @@ import type { Provider } from './schema';
 export type Choice = 'A' | 'B' | 'C' | 'D';
 export type AnswerJson = { choice: Choice; confidence: number; quip: string };
 
+/** Remote MCP grounding via the provider's native connector (§S6, Option A).
+ *  The provider holds the connection; the host's short-lived read-only token is
+ *  passed here per turn and never stored. Only Anthropic wired for now. */
+export type McpConnector = {
+  url: string;
+  authorizationToken: string;
+  /** Tools EXPOSED to the model (not searchAblyTools — the catalog is pre-injected). */
+  allowedTools: readonly string[];
+};
+
 export type StreamArgs = {
   provider: Provider;
   model: string;
@@ -22,7 +32,12 @@ export type StreamArgs = {
   signal?: AbortSignal;
   /** Fires per streamed text delta (the runner pipes this to the AIT session in S4.2). */
   onDelta?: (delta: string, fullText: string) => void;
+  /** When set, ground this turn against a remote MCP server (Anthropic only). */
+  mcp?: McpConnector;
 };
+
+// The connector is a Messages beta; pin the version the wiring is built against.
+const ANTHROPIC_MCP_BETA = 'mcp-client-2025-11-20';
 
 export type StreamResult = {
   ttftMs: number | null;
@@ -60,18 +75,45 @@ async function streamAnthropic(args: StreamArgs): Promise<StreamResult> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const t0 = now();
   const state = newState();
+  const opts = args.signal ? { signal: args.signal } : {};
   try {
-    const stream = client.messages.stream(
-      {
-        model: args.model,
-        max_tokens: args.maxTokens,
-        system: args.system,
-        messages: [{ role: 'user', content: args.user }],
-      },
-      args.signal ? { signal: args.signal } : {},
-    );
-    stream.on('text', (delta: string) => onText(state, delta, t0, args));
-    await stream.finalMessage();
+    if (args.mcp) {
+      // Grounded turn: beta Messages API + the remote-MCP connector. The provider
+      // drives the tool loop, so we still just read the streamed text.
+      const stream = client.beta.messages.stream(
+        {
+          model: args.model,
+          max_tokens: args.maxTokens,
+          system: args.system,
+          messages: [{ role: 'user', content: args.user }],
+          betas: [ANTHROPIC_MCP_BETA],
+          mcp_servers: [
+            {
+              type: 'url',
+              name: 'ably-os',
+              url: args.mcp.url,
+              authorization_token: args.mcp.authorizationToken,
+              tool_configuration: { allowed_tools: [...args.mcp.allowedTools] },
+            },
+          ],
+        },
+        opts,
+      );
+      stream.on('text', (delta: string) => onText(state, delta, t0, args));
+      await stream.finalMessage();
+    } else {
+      const stream = client.messages.stream(
+        {
+          model: args.model,
+          max_tokens: args.maxTokens,
+          system: args.system,
+          messages: [{ role: 'user', content: args.user }],
+        },
+        opts,
+      );
+      stream.on('text', (delta: string) => onText(state, delta, t0, args));
+      await stream.finalMessage();
+    }
   } catch (err) {
     if (!isAbort(err, args.signal)) throw err;
     state.aborted = true;

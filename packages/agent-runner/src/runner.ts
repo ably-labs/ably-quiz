@@ -9,6 +9,7 @@ import {
   streamAnswer,
   type AnswerJson,
   type Choice,
+  type McpConnector,
   type StreamFn,
 } from './providers';
 import type { AgentManifest, Question } from './schema';
@@ -33,6 +34,10 @@ export type AnswerOptions = AnswerContext & {
   onThinking?: (delta: string, fullText: string) => void;
   /** Injectable stream fn; defaults to the real provider adapters. Tests pass a fake. */
   stream?: StreamFn;
+  /** Live MCP grounding for this turn (§S6); appends tool instructions to the
+   *  system prompt and connects the model's MCP connector. */
+  grounding?: string;
+  mcp?: McpConnector;
 };
 
 export type AnswerOutcome = {
@@ -78,6 +83,7 @@ export async function answerQuestion(
         text = full;
         opts.onThinking?.(delta, full);
       },
+      ...(opts.mcp ? { mcp: opts.mcp } : {}),
     });
   } finally {
     clearTimeout(timer);
@@ -119,7 +125,7 @@ Constraints:
 - "quip" is at most 80 characters and MUST NOT contain double-quote characters.
 - Put the reasoning first, then the JSON. Output nothing after the JSON.`;
 
-function buildSystem(agent: AgentManifest, ctx: AnswerContext): string {
+function buildSystem(agent: AgentManifest, ctx: AnswerContext & { grounding?: string }): string {
   const parts = [BASE_SYSTEM];
   if (agent.personality) {
     parts.push(
@@ -131,6 +137,9 @@ function buildSystem(agent: AgentManifest, ctx: AnswerContext): string {
   }
   if (ctx.digest?.trim()) {
     parts.push(`Reference material you have studied (use when relevant):\n${ctx.digest.trim()}`);
+  }
+  if (ctx.grounding?.trim()) {
+    parts.push(ctx.grounding.trim());
   }
   return parts.join('\n\n');
 }

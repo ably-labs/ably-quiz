@@ -15,6 +15,7 @@ import { answerQuestion, loadRegistry, type Question } from '@ably-quiz/agent-ru
 import { agentChannel, answersChannel, type AgentThinkingMessage } from '@ably-quiz/core';
 import Ably from 'ably';
 import { NextResponse } from 'next/server';
+import { ABLY_OS_CONNECTOR_TOOLS, ablyOsMcpUrl, groundingInstructions } from '@/lib/ably-os';
 
 /** Live think-aloud is the text before the answer JSON (the agent streams
  *  reasoning first, then a `{…}`). Strip from the first brace for display. */
@@ -48,7 +49,14 @@ async function repoRoot(): Promise<string> {
   return candidates[0] ?? process.cwd();
 }
 
-type TurnBody = { quizId?: string; slug?: string; question?: Question };
+type TurnBody = {
+  quizId?: string;
+  slug?: string;
+  question?: Question;
+  /** Host's short-lived MCP OAuth token (§S6). Used for this request only —
+   *  never stored, never logged. Grounds Anthropic agents via the MCP connector. */
+  mcpToken?: string;
+};
 
 export async function POST(req: Request): Promise<Response> {
   let body: TurnBody;
@@ -57,7 +65,7 @@ export async function POST(req: Request): Promise<Response> {
   } catch {
     return NextResponse.json({ error: 'invalid JSON body' }, { status: 400 });
   }
-  const { quizId, slug, question } = body;
+  const { quizId, slug, question, mcpToken } = body;
   if (!quizId || !slug || !question) {
     return NextResponse.json({ error: 'quizId, slug and question are required' }, { status: 400 });
   }
@@ -89,6 +97,11 @@ export async function POST(req: Request): Promise<Response> {
   emitThinking({ slug, idx: question.idx, phase: 'thinking', text: '' });
   let lastEmit = 0;
 
+  // Live MCP grounding (§S6, Option A): only when the host has authenticated
+  // AND the provider supports the MCP connector (Anthropic today; grok/gpt run
+  // ungrounded). The token is used for this request only — never stored/logged.
+  const grounded = Boolean(mcpToken) && agent.manifest.provider === 'anthropic';
+
   // Run the tested answer core. A throw/timeout scores 0 — never stalls the quiz.
   let outcome;
   try {
@@ -101,6 +114,16 @@ export async function POST(req: Request): Promise<Response> {
         lastEmit = now;
         emitThinking({ slug, idx: question.idx, phase: 'thinking', text: thinkAloud(full) });
       },
+      ...(grounded
+        ? {
+            grounding: groundingInstructions(),
+            mcp: {
+              url: ablyOsMcpUrl(),
+              authorizationToken: mcpToken!,
+              allowedTools: ABLY_OS_CONNECTOR_TOOLS,
+            },
+          }
+        : {}),
     });
   } catch (err) {
     emitThinking({ slug, idx: question.idx, phase: 'answered', text: '(failed to answer)' });
