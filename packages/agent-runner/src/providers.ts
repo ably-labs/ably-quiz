@@ -91,7 +91,11 @@ async function streamOpenAiCompatible(args: StreamArgs): Promise<StreamResult> {
     const stream = await client.chat.completions.create(
       {
         model: args.model,
-        max_tokens: args.maxTokens,
+        // OpenAI's current models (gpt-5.x, o-series) reject `max_tokens` and
+        // require `max_completion_tokens`; xAI's grok still uses `max_tokens`.
+        ...(isXai
+          ? { max_tokens: args.maxTokens }
+          : { max_completion_tokens: args.maxTokens }),
         stream: true,
         messages: [
           { role: 'system', content: args.system },
