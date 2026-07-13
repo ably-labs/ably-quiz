@@ -15,6 +15,7 @@ import {
 } from '@/components/quiz';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useAgentThinking } from '@/hooks/useAgentThinking';
+import { useCommentary } from '@/hooks/useCommentary';
 import { useQuizId } from '@/hooks/useQuizId';
 import { useQuizState } from '@/hooks/useQuizState';
 
@@ -33,6 +34,7 @@ export default function ScreenPage() {
     view.config?.agents ?? [],
     view.question?.idx ?? -1,
   );
+  const commentary = useCommentary(conn, quizId ?? '');
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -102,7 +104,16 @@ export default function ScreenPage() {
       )}
 
       {ended && (
-        <section>
+        <section className="space-y-8">
+          {commentary.text && (
+            <div className="rounded-2xl border border-ably/40 bg-ably/5 p-6">
+              <p className="mb-2 text-sm tracking-[0.3em] text-ably uppercase">the verdict</p>
+              <p className="text-xl leading-relaxed text-neutral-100">
+                {commentary.text}
+                {!commentary.done && <span className="ml-0.5 animate-pulse">▍</span>}
+              </p>
+            </div>
+          )}
           <Podium scoreboard={view.scoreboard} />
         </section>
       )}

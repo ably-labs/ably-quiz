@@ -30,6 +30,10 @@ export type HostControls = {
   lock: () => Promise<void>;
   reveal: () => Promise<void>;
   podium: () => Promise<void>;
+  /** podium → analysis (fires the commentator, §B2.9). */
+  analysis: () => Promise<void>;
+  /** analysis → done. */
+  done: () => Promise<void>;
 };
 
 /** Runs the quizmaster in the host browser: wires Ably answers → ingest,
@@ -215,9 +219,36 @@ export function useHostQuiz(
       lock: () => run((qm) => qm.lock()),
       reveal: () => run((qm) => qm.reveal()),
       podium: () => run((qm) => qm.podium()),
+      analysis: () => run((qm) => qm.analysis()),
+      done: () => run((qm) => qm.done()),
     }),
     [run],
   );
+
+  // Fire the commentator once when the quiz enters `analysis` (§B2.9). Standings
+  // come from the live scoreboard; the breakdown streams to /screen.
+  const firedCommentator = useRef(false);
+  useEffect(() => {
+    if (state.phase !== 'analysis' || !quiz || firedCommentator.current) return;
+    firedCommentator.current = true;
+    const entries = Object.values(live.scoreboard);
+    const standings = entries
+      .map((e) => ({ name: e.name, kind: e.kind, score: e.score }))
+      .sort((a, b) => b.score - a.score);
+    const totalOf = (kind: 'human' | 'agent') =>
+      entries.filter((e) => e.kind === kind).reduce((s, e) => s + e.score, 0);
+    void fetch('/api/commentator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quizId: quiz.quizId,
+        standings,
+        humanTotal: totalOf('human'),
+        agentTotal: totalOf('agent'),
+        questionCount: quiz.questions.length,
+      }),
+    }).catch(() => undefined);
+  }, [state.phase, quiz, live.scoreboard]);
 
   // --- Auto-advance (Matt, 2026-07-13) ---------------------------------------
   // A question resolves the moment it's decided — everyone present has answered,

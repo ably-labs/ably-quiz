@@ -127,6 +127,11 @@ export default function HostPage() {
             </Control>
           </>
         )}
+        {state.phase === 'podium' && (
+          <Control onClick={controls.analysis} busy={busy} primary>
+            Commentary →
+          </Control>
+        )}
         {ended && <p className="text-neutral-400">Quiz complete — results are on the screen.</p>}
       </div>
 

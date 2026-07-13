@@ -3,6 +3,7 @@ import {
   answerMessageSchema,
   controlMessageSchema,
   parseAgentThinking,
+  parseCommentary,
   parseAnswerMessage,
   parseControlMessage,
   questionDefSchema,
@@ -47,6 +48,18 @@ describe('agent thinking message (§S4.5)', () => {
     expect(parseAgentThinking({ slug: 'x', idx: 0, phase: 'done', text: '' })).toBeNull();
     expect(parseAgentThinking({ slug: 'x', phase: 'thinking', text: '' })).toBeNull();
     expect(parseAgentThinking('nope')).toBeNull();
+  });
+});
+
+describe('commentary message (§B2.9)', () => {
+  it('parses streaming and final commentary, rejects malformed', () => {
+    expect(parseCommentary({ text: 'And they', done: false })).toEqual({
+      text: 'And they',
+      done: false,
+    });
+    expect(parseCommentary({ text: 'Silicon takes it!', done: true })).toMatchObject({ done: true });
+    expect(parseCommentary({ text: 'no done flag' })).toBeNull();
+    expect(parseCommentary('nope')).toBeNull();
   });
 });
 

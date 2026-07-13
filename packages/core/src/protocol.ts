@@ -160,3 +160,17 @@ export function parseAgentThinking(data: unknown): AgentThinkingMessage | null {
   const result = agentThinkingSchema.safeParse(data);
   return result.success ? result.data : null;
 }
+
+// --- Commentator (§B2.9) ----------------------------------------------------
+// The analysis-phase breakdown, streamed token-by-token onto /screen. Published
+// (throttled) to quiz-agent:{id}:commentator; `done` marks the final message.
+export const commentaryMessageSchema = z.object({
+  text: z.string(),
+  done: z.boolean(),
+});
+export type CommentaryMessage = z.infer<typeof commentaryMessageSchema>;
+
+export function parseCommentary(data: unknown): CommentaryMessage | null {
+  const result = commentaryMessageSchema.safeParse(data);
+  return result.success ? result.data : null;
+}
