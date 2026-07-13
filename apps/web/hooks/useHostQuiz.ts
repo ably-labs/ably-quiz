@@ -87,7 +87,13 @@ export function useHostQuiz(
     const buffer: InboundAnswer[] = [];
     const ingest = (raw: InboundAnswer) => {
       qm.ingest(raw);
-      setAnswersIn((n) => n + 1);
+      // Count distinct answers for the CURRENTLY-OPEN question from the engine's
+      // authoritative log — not a raw increment (which over-counts late/duplicate
+      // messages) and not the scoreboard's `answered` flag (which lags a question
+      // transition over LiveObjects and reads stale, tripping a premature
+      // auto-lock that drops slower answerers — 2026-07-13 4-agent smoke).
+      const openIdx = qm.getState().questionIdx;
+      setAnswersIn(qm.getAnswerLog().filter((e) => e.idx === openIdx).length);
     };
     const onAnswer = (msg: Ably.Message) => {
       const raw: InboundAnswer = {
@@ -210,7 +216,6 @@ export function useHostQuiz(
   // OR the timer runs out — no waiting on the host to Lock. Then it auto-reveals
   // (unless the quiz turns that off, to hold on "locked" for suspense).
   const presentCount = members.length;
-  const answeredCount = Object.values(live.scoreboard).filter((e) => e.answered).length;
   const autoLockedIdx = useRef(-1);
 
   useEffect(() => {
@@ -221,8 +226,10 @@ export function useHostQuiz(
       autoLockedIdx.current = idx;
       void controls.lock();
     };
-    // Everyone who's here has answered → done.
-    if (presentCount > 0 && answeredCount >= presentCount) {
+    // Everyone present has answered THIS question → done. `answersIn` is the
+    // engine's per-idx count (see ingest), so it can't be tripped by the previous
+    // question's stale `answered` flags mid-transition — the premature-lock race.
+    if (presentCount > 0 && answersIn >= presentCount) {
       lockOnce();
       return;
     }
@@ -230,7 +237,7 @@ export function useHostQuiz(
     const remaining = question.startedAt + question.limitMs - Date.now();
     const timer = setTimeout(lockOnce, Math.max(0, remaining));
     return () => clearTimeout(timer);
-  }, [state.phase, state.questionIdx, question, presentCount, answeredCount, controls]);
+  }, [state.phase, state.questionIdx, question, presentCount, answersIn, controls]);
 
   useEffect(() => {
     if (state.phase !== 'locked') return;

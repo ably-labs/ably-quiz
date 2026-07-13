@@ -102,6 +102,36 @@ describe('quizmaster — question loop & scoring', () => {
     expect(qm.getAnswerLog()).toHaveLength(5);
   });
 
+  it('attributes the answer log per question so a new question starts from zero (premature-lock regression)', async () => {
+    // The host auto-locks when everyone present has answered THIS question. That
+    // signal must be the engine's per-idx answer count, not a flag that lags a
+    // transition — otherwise the previous question's answers trip an immediate
+    // lock on the next one, dropping slower answerers (2026-07-13 4-agent smoke).
+    const { qm, broadcaster } = makeQuizmaster();
+    qm.init();
+
+    await qm.askNext(); // Q0
+    const t0q0 = broadcaster.control.at(-1)!.serverTs;
+    for (const id of ['a:grok', 'a:opus', 'a:sonnet']) {
+      qm.ingest({ clientId: id, data: { idx: 0, choice: 'A' }, serverTs: t0q0 + 1_000 });
+    }
+    const answeredFor = (idx: number) => qm.getAnswerLog().filter((e) => e.idx === idx).length;
+    expect(answeredFor(0)).toBe(3);
+
+    await qm.lock();
+    await qm.reveal();
+    await qm.askNext(); // Q1
+
+    // The moment Q1 opens, its per-idx count is 0 — the three Q0 answers do NOT
+    // carry over, so a host gating on answeredFor(1) won't lock before anyone has
+    // actually answered Q1.
+    expect(answeredFor(1)).toBe(0);
+
+    const t0q1 = broadcaster.control.at(-1)!.serverTs;
+    qm.ingest({ clientId: 'a:grok', data: { idx: 1, choice: 'B' }, serverTs: t0q1 + 1_000 });
+    expect(answeredFor(1)).toBe(1); // only the one real Q1 answer, not 4
+  });
+
   it('derives species from the clientId prefix on the scoreboard', async () => {
     const { qm, broadcaster, store } = makeQuizmaster();
     qm.init();
