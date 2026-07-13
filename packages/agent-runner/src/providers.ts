@@ -36,8 +36,10 @@ export type StreamArgs = {
   mcp?: McpConnector;
 };
 
-// The connector is a Messages beta; pin the version the wiring is built against.
-const ANTHROPIC_MCP_BETA = 'mcp-client-2025-11-20';
+// The connector is a Messages beta. We use the original connector shape
+// (mcp_servers + tool_configuration.allowed_tools); that's the 2025-04-04 beta.
+// The 2025-11-20 beta requires an additional mcp_toolset entry in `tools`.
+const ANTHROPIC_MCP_BETA = 'mcp-client-2025-04-04';
 
 export type StreamResult = {
   ttftMs: number | null;
