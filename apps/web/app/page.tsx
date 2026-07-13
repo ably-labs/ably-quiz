@@ -121,6 +121,7 @@ export default function CreatePage() {
   const [defaultLimitS, setDefaultLimitS] = useState(LIMIT_DEFAULT_S);
   const [algoId, setAlgoId] = useState(DEFAULT_ALGO_ID);
   const [streakEnabled, setStreakEnabled] = useState(false);
+  const [autoReveal, setAutoReveal] = useState(true);
   const [created, setCreated] = useState<{ quiz: StoredQuiz; origin: string } | null>(null);
   const [devLike, setDevLike] = useState(false);
   useEffect(() => setDevLike(isLocalHost()), []);
@@ -140,6 +141,7 @@ export default function CreatePage() {
       questionCount: questions.length,
       defaultLimitMs: defaultLimitS * 1000,
       streakEnabled,
+      autoReveal,
     };
     const quiz: StoredQuiz = { quizId, createdAt: Date.now(), questions, config };
     saveQuiz(quiz);
@@ -249,6 +251,18 @@ export default function CreatePage() {
           />
           Streak bonus (×1.1 up to ×1.5 for consecutive correct answers)
         </label>
+        <label className="mt-2 flex items-center gap-2 text-sm text-neutral-300">
+          <input
+            type="checkbox"
+            checked={autoReveal}
+            onChange={(e) => setAutoReveal(e.target.checked)}
+          />
+          Auto-reveal the answer once everyone&apos;s answered or time&apos;s up
+        </label>
+        <p className="mt-1 max-w-2xl text-xs text-neutral-500">
+          On (default), a question ends the moment it&apos;s decided — no waiting. Turn off to hold
+          on the locked screen and reveal manually for suspense.
+        </p>
       </fieldset>
 
       <button

@@ -78,6 +78,10 @@ export const quizConfigSchema = z.object({
   questionCount: z.number().int().nonnegative(),
   defaultLimitMs: z.number().int().positive(),
   streakEnabled: z.boolean(),
+  /** Host auto-reveals the answer once a question resolves (everyone answered or
+   *  time's up). Optional; the host treats `undefined` as `true`. Turn off to
+   *  hold on the locked screen and reveal manually for suspense. */
+  autoReveal: z.boolean().optional(),
 });
 export type QuizConfig = z.infer<typeof quizConfigSchema>;
 

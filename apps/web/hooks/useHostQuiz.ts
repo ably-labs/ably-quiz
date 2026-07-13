@@ -8,7 +8,7 @@ import {
   type QuizState,
 } from '@ably-quiz/core';
 import type * as Ably from 'ably';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 import { presenceToMembers, type Member } from '@/hooks/useAbly';
 import type { QuestionBroadcast } from '@/hooks/useQuizState';
@@ -190,16 +190,54 @@ export function useHostQuiz(
     }
   }, []);
 
-  const controls: HostControls = {
-    next: () =>
-      run(async (qm) => {
-        setAnswersIn(0);
-        await qm.askNext();
-      }),
-    lock: () => run((qm) => qm.lock()),
-    reveal: () => run((qm) => qm.reveal()),
-    podium: () => run((qm) => qm.podium()),
-  };
+  // Stable so the auto-advance effects below don't re-fire on every render.
+  const controls = useMemo<HostControls>(
+    () => ({
+      next: () =>
+        run(async (qm) => {
+          setAnswersIn(0);
+          await qm.askNext();
+        }),
+      lock: () => run((qm) => qm.lock()),
+      reveal: () => run((qm) => qm.reveal()),
+      podium: () => run((qm) => qm.podium()),
+    }),
+    [run],
+  );
+
+  // --- Auto-advance (Matt, 2026-07-13) ---------------------------------------
+  // A question resolves the moment it's decided — everyone present has answered,
+  // OR the timer runs out — no waiting on the host to Lock. Then it auto-reveals
+  // (unless the quiz turns that off, to hold on "locked" for suspense).
+  const presentCount = members.length;
+  const answeredCount = Object.values(live.scoreboard).filter((e) => e.answered).length;
+  const autoLockedIdx = useRef(-1);
+
+  useEffect(() => {
+    if (state.phase !== 'asking' || !question) return;
+    const idx = state.questionIdx;
+    const lockOnce = () => {
+      if (autoLockedIdx.current === idx) return; // already auto-locked this question
+      autoLockedIdx.current = idx;
+      void controls.lock();
+    };
+    // Everyone who's here has answered → done.
+    if (presentCount > 0 && answeredCount >= presentCount) {
+      lockOnce();
+      return;
+    }
+    // Otherwise lock when the window expires.
+    const remaining = question.startedAt + question.limitMs - Date.now();
+    const timer = setTimeout(lockOnce, Math.max(0, remaining));
+    return () => clearTimeout(timer);
+  }, [state.phase, state.questionIdx, question, presentCount, answeredCount, controls]);
+
+  useEffect(() => {
+    if (state.phase !== 'locked') return;
+    if (quiz?.config.autoReveal === false) return; // suspense mode: host reveals
+    const timer = setTimeout(() => void controls.reveal(), 800); // beat, so "locked" registers
+    return () => clearTimeout(timer);
+  }, [state.phase, quiz, controls]);
 
   return { state, correct, question, live, controls, answersIn, busy, members };
 }
