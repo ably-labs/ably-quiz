@@ -190,6 +190,23 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 
 **Excluded (with reason):** all writes/mutations (`*Create/Update/Add/Send/Move/Transition/Delete/Manage/Write/Chart/Format/Upload/Revoke/Enable/Reload`); **Gong** + **HubSpot** (customer-confidential/PII, even reads); **Xero/Stripe** (finance); **BambooHR/On-Call** (HR/personal); **Gmail/Calendar** + all GSuite writers; **Metabase/Snowflake/usage/GA/Peec/Semrush/Dashboards/Fivetran** (BI, not knowledge); **Sentry** (ops); **LinkedIn/Twitter/Reddit/YouTube/Octolens** (external social); admin/identity (`revoke*`, `*OAuthStatus`, `userInfo`, `chatLookupUser`, `wikiGetUserInfo`); misc (`figma*`, `rebrandly*`, `devtoArticle`, `brand*`, `worldCup*`, `submitFeedback`). Note `googleDriveManage` excluded because it can **share** (change ACLs). Belt-and-braces: an injected system instruction ("reads only; only clearly public/company-shared resources").
 
+### Build status (S6 grounding) — plumbing landed, live grounding pending Matt's Okta (2026-07-14)
+
+- **Model-side** (`9d80b98`): `lib/ably-os.ts` (Worker URL, 61-tool allowlist, connector tools = callTool
+  + getContext only, injected catalog + reads-only instructions); `providers.ts` attaches the
+  Anthropic beta MCP connector (`mcp-client-2025-11-20`) on grounded turns; `runner.ts`/`api/agent-turn`
+  thread `grounding` + `mcp`, grounding a turn only when a token is present AND the agent is Anthropic
+  (grok/gpt run ungrounded). Dormant + non-breaking until a token flows.
+- **Host OAuth** (`7fe9db4`): `/api/mcp/register` (discovery + DCR proxy), `/api/mcp/token` (PKCE exchange
+  proxy, SSRF-guarded), `useMcpAuth` (DCR → PKCE → Okta redirect → callback → token in sessionStorage),
+  `/host` "Authenticate agents" banner. Token browser-only, passed per turn, never stored/logged.
+- **Verified live to the Okta wall:** clicking Authenticate ran discovery + DCR against the real Worker and
+  redirected to `ably.okta.com`. **Pending:** the human Okta login + token exchange + the actual
+  "agent cites Ably knowledge" moment — needs Matt to authenticate, then a grounded quiz run.
+- **Known unknowns for the live test:** exact `/authorize` param acceptance (scope/resource) and redirect-URI
+  matching with the `?quiz=` query; the token-exchange response shape; and whether a grounded turn fits the
+  ~8s budget. Expect one or two fixups during the first real Okta run.
+
 ### Follow-ups (not quiz blockers)
 
 - **MCP `?readOnly=true` mode** — a server-side read-only filter by tool metadata so new read tools
