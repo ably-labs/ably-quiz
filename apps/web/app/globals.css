@@ -42,7 +42,10 @@ body {
 
 /* react-datasheet-grid — dark theme. Scoped under .dsg-dark so it wins over the
    library's light defaults regardless of CSS bundle order. */
-.dsg-dark .dsg-container {
+/* Define the theme variables on the wrapper (not .dsg-container) so they cascade
+   to the add-row footer too — it renders OUTSIDE .dsg-container and would otherwise
+   fall back to the library's light default border (the stray white box). */
+.dsg-dark {
   --dsg-border-color: #262626;
   --dsg-cell-background-color: #0a0a0b;
   --dsg-cell-disabled-background-color: #141414;
@@ -50,6 +53,8 @@ body {
   --dsg-header-active-text-color: var(--color-ink);
   --dsg-selection-border-color: var(--color-ably);
   --dsg-selection-background-color: rgba(255, 84, 22, 0.08);
+}
+.dsg-dark .dsg-container {
   color: var(--color-ink);
   background: var(--color-canvas);
   border-radius: 0.5rem;
@@ -62,7 +67,9 @@ body {
 .dsg-dark .dsg-add-row {
   background: var(--color-canvas);
   color: var(--color-ink);
-  border-top: solid 1px #262626;
+  /* All four sides — the footer's left/right/bottom otherwise fell back to the
+     library's light default border (the stray white box). */
+  border: solid 1px #262626;
 }
 .dsg-dark button {
   background: transparent;
