@@ -200,12 +200,13 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 - **Host OAuth** (`7fe9db4`): `/api/mcp/register` (discovery + DCR proxy), `/api/mcp/token` (PKCE exchange
   proxy, SSRF-guarded), `useMcpAuth` (DCR → PKCE → Okta redirect → callback → token in sessionStorage),
   `/host` "Authenticate agents" banner. Token browser-only, passed per turn, never stored/logged.
-- **Verified live to the Okta wall:** clicking Authenticate ran discovery + DCR against the real Worker and
-  redirected to `ably.okta.com`. **Pending:** the human Okta login + token exchange + the actual
-  "agent cites Ably knowledge" moment — needs Matt to authenticate, then a grounded quiz run.
-- **Known unknowns for the live test:** exact `/authorize` param acceptance (scope/resource) and redirect-URI
-  matching with the `?quiz=` query; the token-exchange response shape; and whether a grounded turn fits the
-  ~8s budget. Expect one or two fixups during the first real Okta run.
+- **LIVE-VERIFIED end-to-end (2026-07-14, Matt):** host Okta login → token → grounded Anthropic agents
+  (opus/sonnet/fable) answer via the connector against the real MCP Worker; grok/gpt play ungrounded.
+  Fixup found on the first run (`faa5b8f`): the connector shape matches the **2025-04-04** beta, not the
+  2025-11-20 one (which needs an `mcp_toolset` in `tools`) — the wrong pin 400'd every grounded turn.
+  DCR/PKCE/redirect-URI-with-`?quiz=`/token-exchange all worked unchanged.
+- **Still worth watching:** grounded-turn latency vs the ~18s deadline (a real lookup + answer is slower than
+  ungrounded) — tune (cap to one fast tool call / adjust deadline) if grounded agents start missing the window.
 
 ### Follow-ups (not quiz blockers)
 
@@ -225,7 +226,7 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 ## S6 — Week 2: MCP + open-source
 
 - [ ] S6.1 fast-model MCP router in the agent-turn handler
-- [ ] S6.2 **MCP MCP wiring** — host OAuth (DCR + Okta), client-side per-session token, `?allowedTools=` read-only, no service account. Redesigned — see "S4.4 + S6 redesign" above.
+- [x] S6.2 **MCP MCP wiring** — host OAuth (DCR + Okta), client-side per-session token, `?allowedTools=` read-only, no service account. **LIVE-VERIFIED 2026-07-14** (see build-status note above). Redesigned — see "S4.4 + S6 redesign" above.
 - [ ] S6.3 MCP-powered study()
 - [ ] S6.4 PR-your-own-agent docs + CI (dev-kit harness)
 - [ ] S6.5 open-source pass (Ably Labs)
