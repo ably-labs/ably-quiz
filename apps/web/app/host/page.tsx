@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
+import { BrandMark } from '@/components/BrandMark';
 import { Lobby } from '@/components/Lobby';
 import { Countdown, LETTERS, QuestionCard, Scoreboard, TallyBars } from '@/components/quiz';
 import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
@@ -47,6 +48,7 @@ export default function HostPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
+      <BrandMark className="mb-5" />
       <header className="mb-6 flex items-center justify-between">
         <div>
           <p className="text-xs tracking-widest text-neutral-500 uppercase">host controls</p>

@@ -11,6 +11,7 @@ import {
   Scoreboard,
   TallyBars,
 } from '@/components/quiz';
+import { BrandMark } from '@/components/BrandMark';
 import { Lobby } from '@/components/Lobby';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useQuizId } from '@/hooks/useQuizId';
@@ -58,7 +59,10 @@ export default function PlayPage() {
   if (!joined) {
     return (
       <Centered>
-        <p className="text-xs font-medium tracking-[0.3em] text-ably uppercase">join the quiz</p>
+        <BrandMark className="mb-6" />
+        <p className="text-xs font-medium tracking-[0.3em] text-neutral-500 uppercase">
+          join the quiz
+        </p>
         <h1 className="mt-1 mb-6 text-3xl font-bold">{quizId}</h1>
         <form
           onSubmit={(e) => {
@@ -89,6 +93,7 @@ export default function PlayPage() {
 
   return (
     <main className="mx-auto max-w-md px-5 py-8">
+      <BrandMark className="mb-5" />
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {conn && (

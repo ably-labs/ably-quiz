@@ -13,6 +13,7 @@ import {
 } from '@ably-quiz/core';
 import QRCode from 'qrcode';
 import { useEffect, useMemo, useState } from 'react';
+import { BrandMark } from '@/components/BrandMark';
 import {
   emptyRow,
   isRowEmpty,
@@ -180,7 +181,7 @@ export default function CreatePage() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8">
-        <p className="text-xs font-medium tracking-[0.3em] text-ably uppercase">the Ably Quiz</p>
+        <BrandMark className="mb-4" />
         <h1 className="text-4xl font-extrabold tracking-tight">Create a quiz</h1>
         <p className="mt-2 text-neutral-400">
           Type your questions, or copy a block straight out of a spreadsheet and paste it into the
@@ -390,7 +391,8 @@ function CreatedView({ quiz, origin }: { quiz: StoredQuiz; origin: string }) {
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-12 text-center">
-      <p className="text-xs font-medium tracking-[0.3em] text-ably uppercase">quiz ready</p>
+      <BrandMark className="mb-8" />
+      <p className="text-xs font-medium tracking-[0.3em] text-neutral-500 uppercase">quiz ready</p>
       <h1 className="mt-1 text-4xl font-extrabold tracking-tight">{quiz.quizId}</h1>
       <p className="mt-2 text-neutral-400">
         {quiz.questions.length} questions · scoring: {quiz.config.scoringAlgoId}
