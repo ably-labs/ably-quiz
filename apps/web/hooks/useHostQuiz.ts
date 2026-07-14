@@ -200,10 +200,16 @@ export function useHostQuiz(
     setBusy(true);
     try {
       await fn(qm);
+    } catch (err) {
+      // Auto-advance (timer + all-answered) is best-effort: a benign race — e.g. a
+      // stale lock timer firing after the question already locked, or after End
+      // early → podium — must not crash the host. The state machine still rejects
+      // the illegal move; we just resync and carry on.
+      console.warn('quizmaster control skipped:', err instanceof Error ? err.message : err);
+    } finally {
       const next = qm.getState();
       setState(next);
       setCorrect(qm.getCorrect(next.questionIdx) ?? null);
-    } finally {
       setBusy(false);
     }
   }, []);
