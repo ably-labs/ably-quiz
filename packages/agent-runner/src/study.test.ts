@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   ABLY_LLMS_TXT,
   ABLY_MCP_STUDY_TOPICS,
+  CRIB_SENTINEL,
   ablyDocsStudy,
   ablyMcpStudy,
   ablyMcpStudyInstruction,
   parseLlmsTxt,
+  stripStudyPreamble,
 } from './study';
 import type { AgentManifest } from './schema';
 
@@ -114,14 +116,30 @@ describe('ablyMcpStudy (§S6.3)', () => {
         return Promise.resolve('## Products\n- Pub/Sub — realtime channels.');
       },
     });
-    // The instruction carries the topics + the open-source guardrail.
+    // The instruction carries the topics + the open-source guardrail + sentinel.
     expect(seen).toContain(ABLY_MCP_STUDY_TOPICS[0]);
     expect(seen).toMatch(/public.*open-source/i);
     expect(seen).toMatch(/do not include anything confidential/i);
+    expect(seen).toContain(CRIB_SENTINEL);
     // The crib wraps the researched notes with a header naming the strategy.
     expect(crib).toContain('Matt Opus — crib');
     expect(crib).toContain('ably-mcp');
     expect(crib).toContain('Pub/Sub — realtime channels.');
+  });
+
+  it('strips the streamed tool-use narration before the crib (sentinel path)', async () => {
+    const crib = await ablyMcpStudy({
+      agent,
+      digest: '',
+      fetchText: noFetch,
+      research: () =>
+        Promise.resolve(
+          `I'll research this. Let me load the context.Now searching…${CRIB_SENTINEL}\n## Products\n- Pub/Sub.`,
+        ),
+    });
+    expect(crib).not.toContain("I'll research this");
+    expect(crib).not.toContain('searching…');
+    expect(crib).toContain('## Products');
   });
 
   it('throws (so the CLI skips) when no research hook is wired', async () => {
@@ -139,5 +157,21 @@ describe('ablyMcpStudy (§S6.3)', () => {
   it('builds an instruction that lists every study topic', () => {
     const instruction = ablyMcpStudyInstruction(agent);
     for (const topic of ABLY_MCP_STUDY_TOPICS) expect(instruction).toContain(topic);
+  });
+});
+
+describe('stripStudyPreamble', () => {
+  it('takes everything after the last sentinel', () => {
+    expect(stripStudyPreamble(`narration blah ${CRIB_SENTINEL}\n## A\n- x`)).toBe('## A\n- x');
+  });
+
+  it('falls back to the first Markdown heading when no sentinel is present', () => {
+    expect(stripStudyPreamble("Let me research.\n\n## Products\n- Pub/Sub.")).toBe(
+      '## Products\n- Pub/Sub.',
+    );
+  });
+
+  it('returns the trimmed text when there is neither sentinel nor heading', () => {
+    expect(stripStudyPreamble('   just prose   ')).toBe('just prose');
   });
 });

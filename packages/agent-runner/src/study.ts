@@ -124,6 +124,10 @@ export const ABLY_MCP_STUDY_TOPICS = [
 const MCP_STUDY_GUARDRAIL =
   'Only include information safe to publish in a PUBLIC, open-source repository: Ably product and technical knowledge. Do NOT include anything confidential — no revenue, named customers, internal roadmaps, unreleased plans, security specifics, or employee data.';
 
+/** Sentinel the model must emit immediately before the crib, so the tool-use
+ *  narration it streams while researching can be stripped deterministically. */
+export const CRIB_SENTINEL = '===CRIB===';
+
 /** The research prompt an `ably-mcp` study sends through the grounded model. */
 export function ablyMcpStudyInstruction(
   agent: AgentManifest,
@@ -135,10 +139,22 @@ export function ablyMcpStudyInstruction(
     'Topics:',
     ...topics.map((t) => `- ${t}`),
     '',
-    'Write tight Markdown bullets grouped under short headings. Prefer specific facts (names, numbers, guarantees) over prose. Ground every claim in what the tools return — do not invent. Aim for 250–500 words, notes only, no preamble.',
+    'Write tight Markdown bullets grouped under short section headings. Prefer specific facts (names, numbers, guarantees) over prose. Ground every claim in what the tools return — do not invent. Aim for 250–500 words.',
+    '',
+    `Output the crib and nothing else. Do NOT add a top-level title — start with the first section heading (e.g. \`## Products\`). Put the line \`${CRIB_SENTINEL}\` on its own line immediately before the crib, and write nothing after the crib ends.`,
     '',
     MCP_STUDY_GUARDRAIL,
   ].join('\n');
+}
+
+/** Keep only the crib from a grounded response: the model streams tool-use
+ *  narration before it, so take everything after the sentinel; failing that,
+ *  fall back to the first Markdown heading (older responses had no sentinel). */
+export function stripStudyPreamble(text: string): string {
+  const at = text.lastIndexOf(CRIB_SENTINEL);
+  if (at >= 0) return text.slice(at + CRIB_SENTINEL.length).trim();
+  const heading = text.search(/^#{1,3}\s/m);
+  return (heading >= 0 ? text.slice(heading) : text).trim();
 }
 
 /**
@@ -153,7 +169,7 @@ export const ablyMcpStudy: StudyFn = async (ctx) => {
       'ably-mcp study needs MCP grounding — set ANTHROPIC_API_KEY + ABLY_MCP_AUTH (+ optional ABLY_MCP_URL)',
     );
   }
-  const notes = (await ctx.research(ablyMcpStudyInstruction(ctx.agent))).trim();
+  const notes = stripStudyPreamble(await ctx.research(ablyMcpStudyInstruction(ctx.agent)));
   if (!notes) throw new Error('ably-mcp study returned no notes');
   return renderMcpCrib(ctx.agent, notes);
 };
