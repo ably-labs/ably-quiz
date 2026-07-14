@@ -247,6 +247,16 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 
 ## Deviations
 
+- **All agents via the Vercel AI Gateway (2026-07-14, Matt).** Supersedes the brief's per-provider
+  adapters. `providers.ts` streams every turn through the gateway's OpenAI-compatible endpoint
+  (`https://ai-gateway.vercel.sh/v1`, model `provider/model`) on one key (`AI_GATEWAY_API_KEY`) — unified
+  billing, so a single provider's quota (the OpenAI 429 that benched Matt GPT) can't sideline an agent.
+  **Exception:** a grounded Anthropic turn stays direct (needs `ANTHROPIC_API_KEY`) — the MCP MCP
+  connector is an Anthropic-Messages feature the gateway can't carry. Added a preflight (`/api/agent-health`
+  + host banner) and an in-run `error`-phase warning on the thinking wall so a dead key/quota is visible,
+  not silent. Live-verified: all 5 agents pass the preflight and answer through the gateway; grok's gateway
+  id is `grok-4.20-non-reasoning` (no date suffix).
+
 - **S1.3 (channel naming):** answers/agent channels renamed `quiz:{id}:answers` → `quiz-answers:{id}` and `quiz:{id}:agent:{slug}` → `quiz-agent:{id}:{slug}`. Rationale: Ably namespaces match the first colon-segment only, so per-namespace rules (batching on answers, appends on agent sessions, neither on main) require distinct prefixes. Same architecture; encoded in the protocol at S2.1. See [docs/ABLY-SETUP.md](docs/ABLY-SETUP.md).
 - **S1.3 (fairness clock):** VERIFIED empirically that under real server-side batching, per-message server timestamps quantize to the batch flush (≈2 distinct timestamps across 20 simultaneous messages), NOT preserved per-message. Decision per §B2.1: accept ≤200ms quantization (uniform → fair); keep batching on `quiz-answers` (needed for the quizmaster's 50 msg/s outbound limit at scale). Tunable to 100ms or off; revisit at S3.6.
 - **S3.3 (LiveObjects shape):** quiz state (phase/questionIdx/config/tallies/scoreboard) is stored as root-map JSON values with coalesced writes (`AblyLiveStore`), rather than a nested LiveCounter-per-option + LiveMap-per-player (§B2.3). The host is the sole writer and owns the authoritative counts; whole-value writes with a ~150ms flush keep object-op rate bounded under a burst and the reader still gets live updates. Revisit if a per-key CRDT is needed. LiveObjects requires channel MODES (`object_subscribe`/`object_publish`) to be requested explicitly — centralised in `getMainChannel`.
