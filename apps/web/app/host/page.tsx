@@ -444,6 +444,13 @@ function StartControls({
   const [confirming, setConfirming] = useState(false);
   const needsWarning = hasAgents && !grounded;
 
+  // If grounding lands while the warning is up (the host clicked "Authenticate
+  // agents"), drop it — the plain Start button now starts straight away, so the
+  // panel must not keep claiming the agents are ungrounded (§S5.2 review).
+  useEffect(() => {
+    if (grounded) setConfirming(false);
+  }, [grounded]);
+
   if (confirming) {
     return (
       <div className="w-full space-y-3 rounded-lg border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-sm">

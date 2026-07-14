@@ -74,7 +74,10 @@ export function useHostQuiz(
   const [correct, setCorrect] = useState<Choice | null>(null);
   const [question, setQuestion] = useState<QuestionBroadcast | null>(null);
   const [live, setLive] = useState<LiveQuizState>(INITIAL_STATE);
-  const [answersIn, setAnswersIn] = useState(0);
+  // clientIds that answered the currently-open question (from the engine log).
+  // We keep the ids, not a raw count, so the "answered" total can exclude a
+  // preflight-failed agent's answer reactively (see the derived `answersIn`).
+  const [answeredIds, setAnsweredIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [counterfactual, setCounterfactual] = useState<CounterfactualPayload | null>(null);
@@ -116,7 +119,7 @@ export function useHostQuiz(
       // transition over LiveObjects and reads stale, tripping a premature
       // auto-lock that drops slower answerers — 2026-07-13 4-agent smoke).
       const openIdx = qm.getState().questionIdx;
-      setAnswersIn(qm.getAnswerLog().filter((e) => e.idx === openIdx).length);
+      setAnsweredIds(qm.getAnswerLog().filter((e) => e.idx === openIdx).map((e) => e.clientId));
     };
     const onAnswer = (msg: Ably.Message) => {
       const raw: InboundAnswer = {
@@ -190,7 +193,7 @@ export function useHostQuiz(
       ready = true;
       for (const raw of buffer.splice(0)) qm.ingest(raw); // dedup handles overlap
       const idx = qm.getState().questionIdx;
-      setAnswersIn(qm.getAnswerLog().filter((e) => e.idx === idx).length);
+      setAnsweredIds(qm.getAnswerLog().filter((e) => e.idx === idx).map((e) => e.clientId));
       setCorrect(qm.getCorrect(idx) ?? null);
       setState(qm.getState());
     })();
@@ -230,7 +233,7 @@ export function useHostQuiz(
     () => ({
       next: () =>
         run(async (qm) => {
-          setAnswersIn(0);
+          setAnsweredIds([]);
           await qm.askNext();
         }),
       lock: () => run((qm) => qm.lock()),
@@ -293,6 +296,13 @@ export function useHostQuiz(
   for (const a of quiz?.config.agents ?? []) agentSlugs.add(a.slug);
   for (const slug of unavailable) agentSlugs.delete(slug); // don't wait on a failed model
   const expectedAnswerers = humanCount + agentSlugs.size;
+  // Count only answers from expected answerers: a preflight-failed agent that
+  // still managed to answer (e.g. it answered before being marked unavailable)
+  // must not inflate the numerator and trip a premature auto-lock that skips
+  // slower humans — the numerator/denominator must exclude the same agents (§S5.2).
+  const answersIn = answeredIds.filter(
+    (id) => !(id.startsWith('a:') && unavailable.has(id.slice(2))),
+  ).length;
   const autoLockedIdx = useRef(-1);
 
   useEffect(() => {
