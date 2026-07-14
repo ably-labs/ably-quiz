@@ -1,0 +1,11 @@
+{
+  "name": "@ably-quiz/agents",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The agent registry. Each agents/<slug>/ is a runtime-loaded agent (agent.json + crib.md + optional agent.ts). This package exists only so those agent.ts files can import the shared @ably-quiz/agent-runner building blocks.",
+  "dependencies": {
+    "@ably-quiz/agent-runner": "workspace:*",
+    "@ably-quiz/core": "workspace:*"
+  }
+}

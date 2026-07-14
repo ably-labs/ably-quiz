@@ -9,10 +9,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @ably-quiz/web dev",
-    "build": "pnpm --filter @ably-quiz/web build",
+    "dev": "pnpm agents:build && pnpm --filter @ably-quiz/web dev",
+    "build": "pnpm agents:build && pnpm --filter @ably-quiz/web build",
     "agents:start": "pnpm --filter @ably-quiz/agent-runner start",
     "agents:study": "pnpm --filter @ably-quiz/agent-runner study",
+    "agents:build": "pnpm --filter @ably-quiz/agent-runner build:agents",
     "agent:new": "pnpm --filter @ably-quiz/agent-runner new",
     "agent:test": "pnpm --filter @ably-quiz/agent-runner test:agent",
     "typecheck": "pnpm -r typecheck",

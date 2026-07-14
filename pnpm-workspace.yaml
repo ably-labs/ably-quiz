@@ -1,7 +1,10 @@
 # Carbon vs Silicon monorepo (BRIEF §B3 S1.1).
-# agents/* are a registry of agent folders loaded at runtime, NOT npm packages,
-# so they are intentionally not workspace members.
+# `agents/` is a single workspace package ONLY so each agents/<slug>/agent.ts can
+# import the shared @ably-quiz/agent-runner building blocks. The individual agent
+# folders are still a runtime registry (agent.json + crib.md + optional agent.ts),
+# loaded by path — they are NOT packages themselves.
 packages:
   - 'apps/*'
   - 'packages/*'
   - 'spikes/*'
+  - 'agents'

@@ -16,6 +16,7 @@ import { agentChannel, answersChannel, type AgentThinkingMessage } from '@ably-q
 import Ably from 'ably';
 import { NextResponse } from 'next/server';
 import { ABLY_OS_CONNECTOR_TOOLS, ablyOsMcpUrl, groundingInstructions } from '@/lib/ably-os';
+import { AGENT_MODULES } from '@/lib/agent-modules.generated';
 
 /** Live think-aloud is the text before the answer JSON (the agent streams
  *  reasoning first, then a `{…}`). Strip from the first brace for display. */
@@ -76,11 +77,16 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const root = await repoRoot();
-  const registry = await loadRegistry(path.join(root, 'agents'));
+  // Pass the generated agent-module map so a per-agent answer() override (from the
+  // agent's agent.ts) runs here, in the live turn (§S6.4). JSON-only agents have
+  // no module and fall back to the default answer core.
+  const registry = await loadRegistry(path.join(root, 'agents'), { modules: AGENT_MODULES });
   const agent = registry.agents.find((a) => a.manifest.slug === slug);
   if (!agent) {
     return NextResponse.json({ error: `unknown agent "${slug}"` }, { status: 404 });
   }
+  // The agent's own answer() if it ships one, else the shared default core.
+  const answerFn = agent.answer ?? answerQuestion;
 
   const digest = await readFile(
     path.join(root, 'packages/core/src/ably-digest.md'),
@@ -137,7 +143,7 @@ export async function POST(req: Request): Promise<Response> {
 
   let outcome;
   try {
-    outcome = await answerQuestion(agent.manifest, question, {
+    outcome = await answerFn(agent.manifest, question, {
       digest,
       crib: agent.crib,
       onThinking,
@@ -149,7 +155,7 @@ export async function POST(req: Request): Promise<Response> {
     // ungrounded before giving up, so grounding is truly best-effort.
     console.warn(`[agent-turn] ${slug} grounded turn failed; retrying ungrounded:`, err);
     try {
-      outcome = await answerQuestion(agent.manifest, question, {
+      outcome = await answerFn(agent.manifest, question, {
         digest,
         crib: agent.crib,
         onThinking,
