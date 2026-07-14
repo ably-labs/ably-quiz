@@ -79,7 +79,7 @@ export async function pingModel(provider: Provider, model: string): Promise<stri
     const client = new OpenAI({ apiKey: process.env.AI_GATEWAY_API_KEY, baseURL: GATEWAY_BASE_URL });
     await client.chat.completions.create({
       model: gatewayModel(provider, model),
-      max_tokens: 4,
+      max_tokens: 16, // OpenAI models via the gateway require >= 16
       messages: [{ role: 'user', content: 'ping' }],
     });
     return null;
