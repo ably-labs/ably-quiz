@@ -154,9 +154,13 @@ export function TallyBars({
   );
 }
 
-/** On-screen agent thinking (§S4.5): one card per declared agent showing its
- *  live think-aloud while it works, then its settled reasoning + quip. */
-export function AgentThinkingWall({
+/** Compact per-agent status while a question is open (§S5.2). One quiet row of
+ *  small chips — emoji + name + status only. Deliberately shows NO reasoning:
+ *  the full think-aloud used to stream here and leaked the answer off the shared
+ *  screen (a live-test finding — e.g. "Seven continents: Africa, Antarctica…"
+ *  appeared while the question was still open). Status-only here; the one-liner
+ *  quips surface at reveal (`AgentQuipWall`). */
+export function AgentStatusStrip({
   agents,
   thinking,
 }: {
@@ -165,23 +169,65 @@ export function AgentThinkingWall({
 }) {
   if (agents.length === 0) return null;
   return (
+    <ul className="flex flex-wrap gap-2">
+      {agents.map((a) => {
+        const phase = thinking[a.slug]?.phase;
+        return (
+          <li
+            key={a.slug}
+            className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-200"
+          >
+            <span aria-hidden>{a.emoji}</span>
+            <span className="font-medium">{a.name}</span>
+            {phase === 'thinking' ? (
+              <span className="animate-pulse text-ably">thinking…</span>
+            ) : phase === 'answered' ? (
+              <span className="text-emerald-400" aria-label="answered">
+                ✓
+              </span>
+            ) : phase === 'error' ? (
+              <span className="text-amber-400" aria-label="issue">
+                ⚠️
+              </span>
+            ) : (
+              <span className="text-neutral-600">ready</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** Agents' one-liners at reveal (§S5.2). Shows ONLY the settled `quip` — never
+ *  the full reasoning, which leaked answers while the question was open. Skips
+ *  agents with no quip yet; still surfaces the ⚠️ error state so a failed turn
+ *  stays visible. (The underlying think-aloud text still flows on the agent
+ *  channels for history/inspector use — it's simply no longer rendered here.) */
+export function AgentQuipWall({
+  agents,
+  thinking,
+}: {
+  agents: AgentRosterEntry[];
+  thinking: Record<string, AgentThinkState>;
+}) {
+  const cards = agents
+    .map((a) => ({ a, t: thinking[a.slug] }))
+    .filter(({ t }) => t?.phase === 'error' || (t?.phase === 'answered' && t.quip));
+  if (cards.length === 0) return null;
+  return (
     <div>
-      <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">Agents thinking</h3>
+      <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">Agent takes</h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {agents.map((a) => {
-          const t = thinking[a.slug];
+        {cards.map(({ a, t }) => {
           const errored = t?.phase === 'error';
-          const answered = t?.phase === 'answered';
-          const active = t?.phase === 'thinking';
           return (
             <div
               key={a.slug}
-              className={`rounded-xl border p-3 transition-colors ${
+              className={`rounded-xl border p-3 ${
                 errored
                   ? 'border-amber-800/60 bg-amber-950/20'
-                  : active
-                    ? 'border-ably/60 bg-ably/5'
-                    : 'border-neutral-800 bg-neutral-900/40'
+                  : 'border-neutral-800 bg-neutral-900/40'
               }`}
             >
               <div className="mb-1 flex items-center gap-2">
@@ -189,27 +235,16 @@ export function AgentThinkingWall({
                   {a.emoji}
                 </span>
                 <span className="truncate font-semibold">{a.name}</span>
-                <span className="ml-auto shrink-0 text-xs tabular-nums">
-                  {errored ? (
-                    <span className="text-amber-400">⚠️ issue</span>
-                  ) : answered ? (
-                    <span className="text-emerald-400">✓ answered</span>
-                  ) : active ? (
-                    <span className="animate-pulse text-ably">thinking…</span>
-                  ) : (
-                    <span className="text-neutral-600">ready</span>
-                  )}
-                </span>
+                {errored && (
+                  <span className="ml-auto shrink-0 text-xs text-amber-400">⚠️ issue</span>
+                )}
               </div>
               {errored ? (
-                <p className="line-clamp-2 text-sm text-amber-300/80">{t?.text || 'failed to answer'}</p>
+                <p className="line-clamp-2 text-sm text-amber-300/80">
+                  {t?.text || 'failed to answer'}
+                </p>
               ) : (
-                <>
-                  {t?.text && <p className="line-clamp-3 text-sm text-neutral-400">{t.text}</p>}
-                  {answered && t?.quip && (
-                    <p className="mt-1 text-sm text-neutral-200 italic">“{t.quip}”</p>
-                  )}
-                </>
+                <p className="text-sm text-neutral-200 italic">“{t?.quip}”</p>
               )}
             </div>
           );

@@ -5,7 +5,8 @@ import { getAlgo } from '@ably-quiz/core';
 import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
 import {
-  AgentThinkingWall,
+  AgentQuipWall,
+  AgentStatusStrip,
   CommentaryCard,
   Countdown,
   CounterfactualPanel,
@@ -104,7 +105,7 @@ export default function ScreenPage() {
           </div>
           <TallyBars options={q.options} tallies={view.tallies} />
           <TugOfWar scoreboard={view.scoreboard} />
-          <AgentThinkingWall agents={view.config?.agents ?? []} thinking={thinking} />
+          <AgentStatusStrip agents={view.config?.agents ?? []} thinking={thinking} />
         </section>
       )}
 
@@ -124,7 +125,7 @@ export default function ScreenPage() {
               <TugOfWar scoreboard={view.scoreboard} />
             </div>
           </div>
-          <AgentThinkingWall agents={view.config?.agents ?? []} thinking={thinking} />
+          <AgentQuipWall agents={view.config?.agents ?? []} thinking={thinking} />
         </section>
       )}
 
