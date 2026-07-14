@@ -235,8 +235,10 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 - [x] S5.1 counterfactual "by the way…" panel
 - [x] S5.2 design polish pass — landing front-door + /create; hero image + identity system (team marks); land-in-/host + share panel (dropped the quiz-ready page); agent availability (grey-out + exclude); overt progress bar; Advanced-options disclosure. See S5.2 note below.
 - [ ] S5.3 full dry run (~10 humans + roster + 300 synthetic) + tuning
-- [ ] S5.4 README + docs/RUNBOOK.md
+- [x] S5.4 README + docs/RUNBOOK.md
 - [ ] **GATE: quiz-day definition of done (see brief)**
+
+**S5.4 note (2026-07-14):** rewrote the stale root `README.md` (front door for open-sourcing) and added `docs/RUNBOOK.md` (quiz-day guide: before-the-event checklist, running a live quiz, failure playbook, scale, known limitations). Every command/env var/route/channel verified against the code, not the brief — one correction surfaced: **`HOST_KEY` is gone** (removed in the create-flow review; only lingers in BRIEF.md + the stale `spikes/auth-e2e/README.md`), so a humans-only quiz needs just `ABLY_API_KEY`. No `LICENSE` file yet (S6.5) — README notes MIT-in-the-open-source-pass rather than claiming one. Hero banner embeds the committed `apps/web/public/hero.webp`; real gameplay screenshots deferred to S6.5.
 
 **S5.1 note:** the counterfactual recompute already existed in core (S2.3, `counterfactual()`); S5.1 is the surfacing. `Quizmaster.buildCounterfactual()` resolves it to a name/kind-tagged, top-3 payload; the host publishes it once on the main channel at `analysis` as a distinct `counterfactual` event (deliberately NOT a control message — keeps it out of the state-machine + `recover()` paths). `/screen · /play · host` catch it live and re-derive from history on late-join/reload. The `CounterfactualPanel` is collapsible and flags algorithms that would crown a different winner. Unit-tested with an upset (two slow-correct answers win the accuracy rules; one split-second answer wins `fastest-finger`).
 
