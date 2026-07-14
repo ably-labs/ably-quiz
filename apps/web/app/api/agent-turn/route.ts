@@ -107,39 +107,56 @@ export async function POST(req: Request): Promise<Response> {
     agent.manifest.provider === 'anthropic' &&
     Boolean(process.env.ANTHROPIC_API_KEY);
 
+  const onThinking = (_delta: string, full: string) => {
+    const now = Date.now();
+    if (now - lastEmit < THROTTLE_MS) return;
+    lastEmit = now;
+    emitThinking({ slug, idx: question.idx, phase: 'thinking', text: thinkAloud(full) });
+  };
+  const groundingOpts = grounded
+    ? {
+        grounding: groundingInstructions(),
+        mcp: {
+          url: ablyOsMcpUrl(),
+          authorizationToken: mcpToken!,
+          allowedTools: ABLY_OS_CONNECTOR_TOOLS,
+        },
+      }
+    : {};
+
   // Run the tested answer core. A throw/timeout scores 0 — never stalls the quiz.
+  // Grounding is best-effort: if the connector fails (e.g. an older model that
+  // doesn't support it), fall back to an ungrounded answer rather than dying.
+  // A failed turn: log (never the token), warn on screen, 502.
+  const fail = (e: unknown): Response => {
+    console.error(`[agent-turn] ${slug} failed (grounded=${grounded}):`, e);
+    const msg = e instanceof Error ? e.message : 'failed to answer';
+    emitThinking({ slug, idx: question.idx, phase: 'error', text: msg.slice(0, 200) });
+    return NextResponse.json({ error: msg, slug }, { status: 502 });
+  };
+
   let outcome;
   try {
     outcome = await answerQuestion(agent.manifest, question, {
       digest,
       crib: agent.crib,
-      onThinking: (_delta, full) => {
-        const now = Date.now();
-        if (now - lastEmit < THROTTLE_MS) return;
-        lastEmit = now;
-        emitThinking({ slug, idx: question.idx, phase: 'thinking', text: thinkAloud(full) });
-      },
-      ...(grounded
-        ? {
-            grounding: groundingInstructions(),
-            mcp: {
-              url: ablyOsMcpUrl(),
-              authorizationToken: mcpToken!,
-              allowedTools: ABLY_OS_CONNECTOR_TOOLS,
-            },
-          }
-        : {}),
+      onThinking,
+      ...groundingOpts,
     });
   } catch (err) {
-    // Log the message (not the token) so grounding failures are diagnosable.
-    console.error(`[agent-turn] ${slug} failed (grounded=${grounded}):`, err);
-    // Surface as a warning on screen (§ AI-issue visibility, Matt 2026-07-14).
-    const msg = err instanceof Error ? err.message : 'failed to answer';
-    emitThinking({ slug, idx: question.idx, phase: 'error', text: msg.slice(0, 200) });
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'answer failed', slug },
-      { status: 502 },
-    );
+    if (!grounded) return fail(err);
+    // Grounding failed (e.g. a model that doesn't support the connector) — retry
+    // ungrounded before giving up, so grounding is truly best-effort.
+    console.warn(`[agent-turn] ${slug} grounded turn failed; retrying ungrounded:`, err);
+    try {
+      outcome = await answerQuestion(agent.manifest, question, {
+        digest,
+        crib: agent.crib,
+        onThinking,
+      });
+    } catch (err2) {
+      return fail(err2);
+    }
   }
 
   // Settle the drawer with the final reasoning + quip, whether or not it answered.
