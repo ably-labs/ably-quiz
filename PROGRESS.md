@@ -48,8 +48,22 @@
 - [ ] S4.4 **on-demand agents** (create-time checklist → declarative roster; host-triggered in-app `/api/agent-turn`; presence=thinking-indicator). Redesigned — see "S4.4 + S6 redesign" below. `agents:start` kept as dev harness.
 - [x] S4.5 UI: agent chips (roster, Slice A) + on-screen thinking wall + quips on `/screen` (2026-07-14)
 - [x] S4.6 commentator — Fable streams a ~150-word verdict to `/screen` on `analysis` (2026-07-14)
-- [ ] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison)
-- [ ] **GATE: dry run incl. agent-host kill/recovery test + dev-kit 10-minute experience**
+- [x] S4.7 agent dev kit (`agent:new`, `agent:test` local harness, baseline comparison) — 2026-07-14
+- [ ] **GATE: dry run + dev-kit 10-minute experience** (agent-host kill/recovery is obsolete — the S4.4 redesign dropped the persistent host; dev-kit experience demonstrated below)
+
+**Stage note (S4.7 — agent dev kit, 2026-07-14):** `pnpm agent:new <slug>` scaffolds a valid
+`agents/<slug>/agent.json` (+ a commented `agent.ts` stub for future study/answer hooks) — interactive
+in a terminal, and fully **flag-driven / CI-safe** when not a TTY (`--name/--owner/--provider/--model/…`).
+`pnpm agent:test <slug>` runs the agent against `packages/agent-runner/fixtures/questions.json` (3 bands:
+general, science, ably-internal) with a REAL model call and zero Ably setup: streams the thinking, prints
+per-question `answer · correct? · latency · +score`, a total, and a comparison vs the committed baseline
+(`fixtures/baseline.json` = matt-sonnet, 9/9 · 8589 pts). Schema validation ALWAYS runs; the model run is
+skipped (CI-safe) when the provider key is absent — the same harness is the S6.4 CI check for `agents/*`.
+Verified live: matt-opus 9/9 · 8463 (126 behind the house); scaffold→test in two commands.
+**Deviations:** (1) added `--flag` inputs so the scaffold is scriptable/CI-safe (piped stdin into an
+interactive prompt is unreliable). (2) `--live --quiz <id>` from the brief is deferred — a live join is
+already `pnpm agents:start --agent <slug> --quiz <id>`. (3) the `agent.ts` hooks are a documented stub;
+the registry still loads `agent.json` only (custom-code studies remain future work).
 
 **Stage note (S4.2):** `matt-fable` joins a live quiz end-to-end on real Ably. The
 tested S4.1 core (`answerQuestion`) is reused unchanged; S4.2 adds `live-agent.ts`
