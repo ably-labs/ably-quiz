@@ -244,9 +244,11 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 
 - [ ] S6.1 fast-model MCP router in the agent-turn handler
 - [x] S6.2 **MCP MCP wiring** — host OAuth (DCR + Okta), client-side per-session token, `?allowedTools=` read-only, no service account. **LIVE-VERIFIED 2026-07-14** (see build-status note above). Redesigned — see "S4.4 + S6 redesign" above.
-- [ ] S6.3 MCP-powered study()
+- [x] S6.3 MCP-powered study() — `ably-mcp` strategy: agents research Ably knowledge through the read-only MCP into synthesized facts cribs. Roster switched to it; richer public-safe baseline cribs committed now (MCP regeneration awaits `ABLY_MCP_AUTH`, currently empty → skips gracefully). See S6.3 note below.
 - [ ] S6.4 PR-your-own-agent docs + CI (dev-kit harness)
 - [ ] S6.5 open-source pass (Ably Labs)
+
+**S6.3 note (2026-07-14):** the `study()` scaffolding existed from S4.3 (deterministic `ably-docs` doc-scrape); S6.3 adds the MCP-powered `ably-mcp` strategy — the model trawls Ably knowledge via the read-only MCP MCP connector and synthesizes a facts crib. Strategy is pure/testable (injected `research` hook); the CLI wires the Anthropic MCP connector when `ANTHROPIC_API_KEY` + `ABLY_MCP_AUTH` are present, else skips the agent (keeps its crib). Matt chose "build **and** run now"; the MCP token was empty in `.env.local`, so — per the missing-cred rule, and to keep an open-source-bound repo clean — the committed cribs are a richer **public-safe** baseline (hand-synthesized from public Ably product knowledge), not raw MCP output. A future `pnpm agents:study` with the token set regenerates them via the MCP (the study instruction enforces a public-only guardrail). Roster all switched to `study: ably-mcp`.
 
 ## Deviations
 
