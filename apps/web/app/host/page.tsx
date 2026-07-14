@@ -11,6 +11,7 @@ import {
   ExternalLinkIcon,
   LETTERS,
   QuestionCard,
+  QuizProgress,
   Scoreboard,
   TallyBars,
 } from '@/components/quiz';
@@ -89,6 +90,12 @@ export default function HostPage() {
         </div>
       </header>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
+
+      {state.questionIdx >= 0 && !ended && (
+        <div className="mb-6">
+          <QuizProgress current={state.questionIdx + 1} total={total} />
+        </div>
+      )}
 
       {/* Once the quiz starts, keep the chrome quiet: the grounding/health banners
           only show in the lobby, or in-game when there's a genuine problem (§S5.2). */}

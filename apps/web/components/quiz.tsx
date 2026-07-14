@@ -248,6 +248,27 @@ export function TugOfWar({ scoreboard }: { scoreboard: Record<string, Scoreboard
   );
 }
 
+/** Segmented question progress (§S5.2): one segment per question, filled as the
+ *  quiz advances, with a "3 / 5" readout. `current` is 1-based. */
+export function QuizProgress({ current, total }: { current: number; total: number }) {
+  if (total <= 0 || current <= 0) return null;
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex flex-1 gap-1.5" aria-hidden>
+        {Array.from({ length: total }, (_, i) => {
+          const n = i + 1;
+          const cls =
+            n < current ? 'bg-ably' : n === current ? 'bg-ably/60' : 'bg-neutral-800';
+          return <div key={i} className={`h-1.5 flex-1 rounded-full ${cls}`} />;
+        })}
+      </div>
+      <span className="shrink-0 text-sm font-semibold text-neutral-400 tabular-nums">
+        {current} <span className="text-neutral-600">/</span> {total}
+      </span>
+    </div>
+  );
+}
+
 export function QuestionCard({ prompt, category }: { prompt: string; category?: string }) {
   return (
     <div className="text-center">

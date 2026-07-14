@@ -10,6 +10,7 @@ import {
   CounterfactualPanel,
   Podium,
   QuestionCard,
+  QuizProgress,
   Scoreboard,
   TallyBars,
   TugOfWar,
@@ -85,6 +86,7 @@ export default function ScreenPage() {
 
       {inQuestion && (
         <section className="space-y-8">
+          <QuizProgress current={q.idx + 1} total={view.config?.questionCount ?? 0} />
           <div className="flex flex-col items-center gap-6">
             <QuestionCard prompt={q.prompt} />
             <Countdown startedAt={q.startedAt} limitMs={q.limitMs} />
@@ -97,6 +99,7 @@ export default function ScreenPage() {
 
       {revealed && (
         <section className="space-y-8">
+          <QuizProgress current={q.idx + 1} total={view.config?.questionCount ?? 0} />
           <QuestionCard prompt={q.prompt} />
           <TallyBars options={q.options} tallies={view.tallies} correct={view.correct} />
           <div className="grid gap-8 sm:grid-cols-2">
