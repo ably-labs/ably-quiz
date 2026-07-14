@@ -14,6 +14,7 @@ import {
   QuizProgress,
   Scoreboard,
   TallyBars,
+  TeamMark,
   TugOfWar,
 } from '@/components/quiz';
 import { useAbly, usePresence } from '@/hooks/useAbly';
@@ -69,6 +70,15 @@ export default function ScreenPage() {
           <div className="text-center">
             <JoinQr url={joinUrl} size={160} />
             <p className="mt-2 font-mono text-xs text-neutral-400">{joinUrl}</p>
+          </div>
+        )}
+        {/* Lobby shows the QR here; once the quiz is running, the corner carries
+            the Carbon-vs-Silicon identity instead (§S5.2). */}
+        {view.phase !== 'lobby' && (
+          <div className="flex items-center gap-1.5" aria-label="Carbon vs Silicon">
+            <TeamMark team="carbon" className="h-9 w-9" />
+            <span className="text-[0.65rem] font-bold text-neutral-600">vs</span>
+            <TeamMark team="silicon" className="h-9 w-9" />
           </div>
         )}
       </header>

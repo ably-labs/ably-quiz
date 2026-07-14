@@ -14,6 +14,7 @@ import {
   QuizProgress,
   Scoreboard,
   TallyBars,
+  TeamMark,
 } from '@/components/quiz';
 import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
 import { useAbly } from '@/hooks/useAbly';
@@ -80,12 +81,20 @@ export default function HostPage() {
           <p className="text-xs tracking-widest text-neutral-500 uppercase">host controls</p>
           <h1 className="text-2xl font-bold">{quizId}</h1>
         </div>
-        <div className="text-right text-sm text-neutral-500">
-          <div>
-            connection: <span className="font-medium text-neutral-300">{status}</span>
+        <div className="flex items-center gap-4">
+          {/* Compact Carbon-vs-Silicon identity, balanced against the status block (§S5.2). */}
+          <div className="flex items-center gap-1.5" aria-label="Carbon vs Silicon">
+            <TeamMark team="carbon" className="h-8 w-8" />
+            <span className="text-[0.65rem] font-bold text-neutral-600">vs</span>
+            <TeamMark team="silicon" className="h-8 w-8" />
           </div>
-          <div>
-            phase: <span className="font-medium text-neutral-300">{state.phase}</span> {qLabel}
+          <div className="text-right text-sm text-neutral-500">
+            <div>
+              connection: <span className="font-medium text-neutral-300">{status}</span>
+            </div>
+            <div>
+              phase: <span className="font-medium text-neutral-300">{state.phase}</span> {qLabel}
+            </div>
           </div>
         </div>
       </header>

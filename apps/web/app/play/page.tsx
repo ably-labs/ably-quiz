@@ -137,9 +137,9 @@ export default function PlayPage() {
         <div className="flex items-center gap-3">
           {/* Compact Carbon-vs-Silicon identity in the corner (§S5.2). */}
           <div className="flex items-center gap-1" aria-label="Carbon vs Silicon">
-            <TeamMark team="carbon" className="h-6 w-6" />
+            <TeamMark team="carbon" className="h-8 w-8" />
             <span className="text-[0.6rem] font-bold text-neutral-600">vs</span>
-            <TeamMark team="silicon" className="h-6 w-6" />
+            <TeamMark team="silicon" className="h-8 w-8" />
           </div>
           <StatusDot status={status} />
         </div>
