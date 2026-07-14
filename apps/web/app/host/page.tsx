@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BrandMark } from '@/components/BrandMark';
 import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
@@ -102,7 +102,7 @@ export default function HostPage() {
       {(state.phase === 'lobby' ||
         health.status === 'issues' ||
         health.status === 'unconfigured') && <AgentHealthBanner health={health} />}
-      {state.phase === 'lobby' && <McpAuthBanner mcp={mcpAuth} />}
+      {state.phase === 'lobby' && <McpAuthBanner mcp={mcpAuth} quizId={quizId} />}
 
       {state.phase === 'lobby' && <HostShare quizId={quizId} />}
 
@@ -146,9 +146,14 @@ export default function HostPage() {
 
       <div className="mb-8 flex flex-wrap gap-3">
         {state.phase === 'lobby' && (
-          <Control onClick={controls.next} busy={busy} disabled={total === 0} primary>
-            Start quiz →
-          </Control>
+          <StartControls
+            hasAgents={(quiz.config.agents?.length ?? 0) > 0}
+            grounded={mcpAuth.status === 'authed'}
+            busy={busy}
+            disabled={total === 0}
+            onStart={controls.next}
+            onAuthenticate={mcpAuth.authenticate}
+          />
         )}
         {asking && (
           <Control onClick={controls.lock} busy={busy} primary>
@@ -173,11 +178,9 @@ export default function HostPage() {
           </>
         )}
         {state.phase === 'podium' && (
-          <Control onClick={controls.analysis} busy={busy} primary>
-            Commentary →
-          </Control>
+          <p className="text-neutral-400">Podium up — the AI’s verdict is streaming in…</p>
         )}
-        {ended && (
+        {(state.phase === 'analysis' || state.phase === 'done') && (
           <div className="flex flex-wrap items-center gap-4">
             <p className="text-neutral-400">Quiz complete — results are on the screen.</p>
             <a href="/create" className="text-sm font-medium text-ably hover:underline">
@@ -271,8 +274,29 @@ function shortError(err?: string): string {
 
 /** MCP grounding auth (§S6). Optional: agents play ungrounded until the host
  *  authenticates, then Anthropic agents can look up Ably knowledge (read-only). */
-function McpAuthBanner({ mcp }: { mcp: McpAuth }) {
+function McpAuthBanner({ mcp, quizId }: { mcp: McpAuth; quizId: string }) {
   const busy = mcp.status === 'starting' || mcp.status === 'exchanging';
+  // Once grounded, celebrate for ~4s then collapse to a compact chip so the
+  // control room stays quiet. A reload with a restored token skips the
+  // celebration — a per-quiz sessionStorage marker tells "just authenticated"
+  // apart from "already authed on load" (§S5.2).
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (mcp.status !== 'authed') {
+      setCollapsed(false);
+      return;
+    }
+    const seenKey = `mcp_grounded_seen:${quizId}`;
+    if (sessionStorage.getItem(seenKey)) {
+      setCollapsed(true);
+      return;
+    }
+    sessionStorage.setItem(seenKey, '1');
+    setCollapsed(false);
+    const t = setTimeout(() => setCollapsed(true), 4000);
+    return () => clearTimeout(t);
+  }, [mcp.status, quizId]);
+
   const mcpHost = (() => {
     try {
       return new URL(ABLY_OS_MCP_BASE).host;
@@ -292,6 +316,23 @@ function McpAuthBanner({ mcp }: { mcp: McpAuth }) {
   );
 
   if (mcp.status === 'authed') {
+    if (collapsed) {
+      return (
+        <div className="mb-6 flex justify-end text-xs">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-emerald-500">✓ grounded</span>
+            <span className="text-neutral-600">·</span>
+            <button
+              type="button"
+              onClick={mcp.signOut}
+              className="text-neutral-500 underline hover:text-neutral-300"
+            >
+              sign out
+            </button>
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-4 py-3 text-sm">
         <span className="text-emerald-400">✓ Agents grounded with MCP</span>
@@ -360,14 +401,66 @@ function HostShare({ quizId }: { quizId: string }) {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-lg bg-ably px-5 py-2.5 font-semibold text-black transition hover:brightness-110"
           >
-            Open big screen <ExternalLinkIcon />
+            Open shared screen <ExternalLinkIcon />
           </a>
         </div>
         <p className="mt-3 text-xs text-neutral-600">
-          Project the big screen; players scan to join. You drive the quiz from here.
+          Share or project this screen for everyone — players scan to join. You run the quiz from
+          here.
         </p>
       </div>
     </section>
+  );
+}
+
+/** Lobby "Start quiz" (§S5.2). If agents are declared but not grounded with
+ *  MCP, the first click swaps in an inline confirm rather than starting —
+ *  the host can authenticate or knowingly start ungrounded. A plain quiz (no
+ *  agents, or already grounded) starts straight away. */
+function StartControls({
+  hasAgents,
+  grounded,
+  busy,
+  disabled,
+  onStart,
+  onAuthenticate,
+}: {
+  hasAgents: boolean;
+  grounded: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onStart: () => void;
+  onAuthenticate: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const needsWarning = hasAgents && !grounded;
+
+  if (confirming) {
+    return (
+      <div className="w-full space-y-3 rounded-lg border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-sm">
+        <p className="text-amber-300">
+          Agents aren’t grounded with MCP — they’ll play from their own knowledge.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Control onClick={onAuthenticate} busy={busy} primary>
+            Authenticate agents
+          </Control>
+          <Control onClick={onStart} busy={busy}>
+            Start anyway →
+          </Control>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <Control
+      onClick={() => (needsWarning ? setConfirming(true) : onStart())}
+      busy={busy}
+      disabled={disabled}
+      primary
+    >
+      Start quiz →
+    </Control>
   );
 }
 

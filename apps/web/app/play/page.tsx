@@ -78,7 +78,7 @@ export default function PlayPage() {
       <Centered>
         {/* The imagery is the first thing someone sees from a shared link (§S5.2). */}
         <div
-          className="mb-6 aspect-[16/9] w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 bg-cover bg-center"
+          className="mb-6 aspect-[16/9] w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 bg-cover bg-center"
           style={{ backgroundImage: 'url(/hero.webp)' }}
           role="img"
           aria-label="Carbon vs Silicon — a brain arm-wrestles a microchip"
