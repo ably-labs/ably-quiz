@@ -39,3 +39,40 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  agents:
+    name: validate agents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Schema-validate every agent.json (zod contract) and import every agent.ts,
+      # so a malformed manifest or a broken behaviour module in a PR'd agent fails
+      # here. No provider key is needed — this is the CI-safe half of the harness
+      # (the model-backed `pnpm agent:test` stays a local check).
+      - name: Validate agents
+        run: pnpm agent:validate
+
+      # A contributor who adds/removes an agent.ts must regenerate the static
+      # module index the web app bundles. Rebuild it and fail if it drifts.
+      - name: Regenerate agent-module index
+        run: pnpm agents:build
+
+      - name: Check agent-module index is up to date
+        run: |
+          git diff --exit-code apps/web/lib/agent-modules.generated.ts || {
+            echo "::error::agent-module index is stale — run 'pnpm agents:build' and commit apps/web/lib/agent-modules.generated.ts"
+            exit 1
+          }

@@ -12,8 +12,17 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { AgentModule } from './agent-module';
 
+export type LoadAgentModulesOptions = {
+  /** Called instead of the default `console.warn` when an agent.ts fails to
+   *  import. The validator (`agent:validate`) uses this to turn a broken module
+   *  into a hard CI error — the live host, which passes no handler, keeps the
+   *  default behaviour of logging-and-skipping so one bad PR can't fell the roster. */
+  onError?: (slug: string, error: string) => void;
+};
+
 export async function loadAgentModules(
   agentsDir: string,
+  opts: LoadAgentModulesOptions = {},
 ): Promise<Record<string, AgentModule>> {
   const out: Record<string, AgentModule> = {};
   let names: string[];
@@ -36,9 +45,9 @@ export async function loadAgentModules(
       if (typeof mod.answer === 'function') picked.answer = mod.answer;
       if (picked.study || picked.answer) out[name] = picked;
     } catch (err) {
-      console.warn(
-        `agent.ts for "${name}" failed to load: ${err instanceof Error ? err.message : err}`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      if (opts.onError) opts.onError(name, message);
+      else console.warn(`agent.ts for "${name}" failed to load: ${message}`);
     }
   }
   return out;

@@ -66,3 +66,18 @@ export const answer: AgentModule['answer'] = (agent, question, opts) =>
 - `pnpm agents:study [--agent <slug>]` — (re)generate cribs. `--agent` studies one.
 - `pnpm agent:test <slug>` — dry-run an agent against fixture questions.
 - `pnpm agents:build` — regenerate the static agent-module index for the web app.
+- `pnpm agent:validate` — schema-check every `agent.json` and import every `agent.ts` (the CI gate; no keys needed).
+
+## CI checks your agent
+
+When you open a PR, CI validates every `agent.json` against the schema (and
+imports every `agent.ts`, so a broken behaviour module fails too) and checks the
+generated agent-module index isn't stale. Before opening a PR, run both locally:
+
+```sh
+pnpm agent:validate   # your agent.json + agent.ts are valid
+pnpm agents:build      # regenerate the module index — commit it if it changes
+```
+
+`agent:validate` needs no provider key. The model-backed `pnpm agent:test <slug>`
+is a local check only (it needs your `AI_GATEWAY_API_KEY`), so it does not run in CI.

@@ -67,3 +67,9 @@ spikes/             throwaway experiments (e.g. the S0 latency spike)
 | `pnpm format` / `pnpm format:check` | Prettier                           |
 | `pnpm typecheck`                    | `tsc --noEmit` across all packages |
 | `pnpm test`                         | Vitest (engine unit tests)         |
+| `pnpm agent:validate`               | validate `agents/*` (CI gate)      |
+
+**PR'ing an agent?** CI also schema-validates every `agents/<slug>/agent.json`,
+imports every `agent.ts`, and checks the generated module index isn't stale — so
+run `pnpm agent:validate && pnpm agents:build` locally first (see
+[agents/README.md](agents/README.md)).
