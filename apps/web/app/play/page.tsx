@@ -193,7 +193,12 @@ export default function PlayPage() {
             <h3 className="mb-2 text-center text-xs tracking-widest text-neutral-500 uppercase">
               Final standings
             </h3>
-            <Scoreboard scoreboard={view.scoreboard} limit={12} agents={view.config?.agents} />
+            <Scoreboard
+              scoreboard={view.scoreboard}
+              limit={12}
+              agents={view.config?.agents}
+              highlightId={conn?.clientId}
+            />
           </div>
         </div>
       )}

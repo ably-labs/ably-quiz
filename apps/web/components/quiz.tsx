@@ -246,6 +246,7 @@ export function Scoreboard({
   limit = 8,
   offset = 0,
   agents = [],
+  highlightId,
 }: {
   scoreboard: Record<string, ScoreboardEntry>;
   limit?: number;
@@ -253,27 +254,41 @@ export function Scoreboard({
   offset?: number;
   /** Declared roster, to resolve each agent's emoji. */
   agents?: AgentRosterEntry[];
+  /** The viewer's own clientId — that row is highlighted as "you". */
+  highlightId?: string;
 }) {
   const rows = Object.entries(scoreboard)
     .sort((a, b) => b[1].score - a[1].score)
     .slice(offset, offset + limit);
   return (
     <ol className="space-y-1">
-      {rows.map(([clientId, e], i) => (
-        <li
-          key={clientId}
-          className="flex items-center gap-3 rounded-lg bg-neutral-900/60 px-4 py-2"
-        >
-          <span className="w-6 text-right font-bold text-neutral-500 tabular-nums">
-            {offset + i + 1}
-          </span>
-          <span className="text-lg" aria-hidden>
-            {identityEmoji(clientId, agents)}
-          </span>
-          <span className="flex-1 truncate">{e.name}</span>
-          <span className="font-bold tabular-nums">{e.score}</span>
-        </li>
-      ))}
+      {rows.map(([clientId, e], i) => {
+        const mine = clientId === highlightId;
+        return (
+          <li
+            key={clientId}
+            className={`flex items-center gap-3 rounded-lg px-4 py-2 ${
+              mine ? 'bg-ably/10 ring-1 ring-ably/40' : 'bg-neutral-900/60'
+            }`}
+          >
+            <span className="w-6 text-right font-bold text-neutral-500 tabular-nums">
+              {offset + i + 1}
+            </span>
+            <span className="text-lg" aria-hidden>
+              {identityEmoji(clientId, agents)}
+            </span>
+            <span className="flex-1 truncate">
+              {e.name}
+              {mine && (
+                <span className="ml-2 rounded bg-ably/20 px-1.5 align-middle text-xs font-semibold text-ably">
+                  you
+                </span>
+              )}
+            </span>
+            <span className="font-bold tabular-nums">{e.score}</span>
+          </li>
+        );
+      })}
     </ol>
   );
 }
