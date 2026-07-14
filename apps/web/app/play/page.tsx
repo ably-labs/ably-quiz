@@ -24,6 +24,18 @@ export default function PlayPage() {
   const [joined, setJoined] = useState(false);
   const base = useMemo(() => getPlayerBaseId(), []);
 
+  // Reload resilience: the clientId already survives a refresh (getPlayerBaseId
+  // → sessionStorage), so restore the nickname and rejoin automatically — the
+  // player lands back in the game with their score, not on the join screen.
+  useEffect(() => {
+    if (!quizId) return;
+    const saved = sessionStorage.getItem(`ably-quiz:nick:${quizId}`);
+    if (saved) {
+      setNickname(saved);
+      setJoined(true);
+    }
+  }, [quizId]);
+
   const params = joined && quizId ? { quizId, role: 'player' as const, clientId: base } : null;
   const { conn, status, error } = useAbly(params);
   const view = useQuizState(conn, quizId ?? '');
@@ -67,7 +79,10 @@ export default function PlayPage() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (nickname.trim()) setJoined(true);
+            const n = nickname.trim();
+            if (!n) return;
+            if (quizId) sessionStorage.setItem(`ably-quiz:nick:${quizId}`, n);
+            setJoined(true);
           }}
           className="flex w-full max-w-xs flex-col gap-3"
         >
