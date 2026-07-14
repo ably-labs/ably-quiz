@@ -74,10 +74,12 @@ export async function loadRegistry(
     }
 
     const loaded: LoadedAgent = { manifest: parsed.data, dir };
-    // Attach behaviour hooks from the agent's module, if any (agent.ts).
+    // Attach behaviour hooks from the agent's module, if any (agent.ts). Guard on
+    // `function` (as loadAgentModules does) so a malformed non-function export
+    // falls back to the default core rather than throwing on every turn.
     const mod = opts.modules?.[name];
-    if (mod?.study) loaded.study = mod.study;
-    if (mod?.answer) loaded.answer = mod.answer;
+    if (typeof mod?.study === 'function') loaded.study = mod.study;
+    if (typeof mod?.answer === 'function') loaded.answer = mod.answer;
     if (parsed.data.crib) {
       try {
         loaded.crib = await readFile(join(dir, parsed.data.crib), 'utf8');

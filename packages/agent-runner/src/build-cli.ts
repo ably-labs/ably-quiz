@@ -12,9 +12,16 @@ const REPO_ROOT = new URL('../../../', import.meta.url);
 const AGENTS_DIR = fileURLToPath(new URL('agents/', REPO_ROOT));
 const OUT = fileURLToPath(new URL('apps/web/lib/agent-modules.generated.ts', REPO_ROOT));
 
-/** matt-opus → mattOpus (a safe JS identifier for the import binding). */
+/** A safe JS identifier for the import binding: matt-opus → mattOpus. The slug
+ *  schema allows a leading digit and a trailing dash (`/^[a-z0-9][a-z0-9-]*$/`),
+ *  both of which are illegal in an identifier — so drop stray separators and
+ *  prefix `_` when the result would start with a digit (e.g. 4o-mini → _4oMini),
+ *  else the generated import fails to parse and breaks the whole web build. */
 function ident(slug: string): string {
-  return slug.replace(/[^a-zA-Z0-9]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
+  const camel = slug
+    .replace(/[^a-zA-Z0-9]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase())
+    .replace(/[^a-zA-Z0-9_$]/g, '');
+  return /^[a-zA-Z_$]/.test(camel) ? camel : `_${camel}`;
 }
 
 async function hasAgentTs(dir: string): Promise<boolean> {

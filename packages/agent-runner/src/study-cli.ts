@@ -59,7 +59,9 @@ function makeResearch(token: string): NonNullable<StudyContext['research']> {
       model: MCP_STUDY_MODEL,
       system: MCP_STUDY_SYSTEM,
       user: instruction,
-      maxTokens: 2000,
+      // Shared budget for tool-use narration AND the 250–500-word crib — give it
+      // headroom so a chatty research turn can't truncate the crib mid-content.
+      maxTokens: 3000,
       mcp: { url, authorizationToken: token, allowedTools: MCP_CONNECTOR_TOOLS },
     });
     return res.text;
