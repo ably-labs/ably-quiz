@@ -15,7 +15,7 @@ import { config as loadEnv } from 'dotenv';
 import { getAlgo, scoreQuestion } from '@ably-quiz/core';
 import { loadRegistry } from './registry';
 import { answerQuestion } from './runner';
-import type { Provider, Question } from './schema';
+import type { Question } from './schema';
 
 const REPO_ROOT = new URL('../../../', import.meta.url);
 const AGENTS_DIR = fileURLToPath(new URL('agents/', REPO_ROOT));
@@ -27,12 +27,6 @@ const BASELINE_PATH = fileURLToPath(new URL('../fixtures/baseline.json', import.
 const LETTERS = ['A', 'B', 'C', 'D'] as const;
 const LIMIT_MS = 20_000;
 const ALGO = getAlgo('classic')!;
-
-const PROVIDER_KEY: Partial<Record<Provider, string>> = {
-  anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  xai: 'XAI_API_KEY',
-};
 
 type Fixture = {
   band: string;
@@ -81,11 +75,9 @@ async function main(): Promise<void> {
   );
 
   // Model run only when the agent's provider key is present (else CI-safe exit).
-  const keyName = PROVIDER_KEY[agent.manifest.provider];
-  if (!keyName || !process.env[keyName]) {
-    console.log(
-      dim(`\n${keyName ?? agent.manifest.provider} not set — schema-validated only (no model run).`),
-    );
+  // All agents answer through the Vercel AI Gateway (one key).
+  if (!process.env.AI_GATEWAY_API_KEY) {
+    console.log(dim('\nAI_GATEWAY_API_KEY not set — schema-validated only (no model run).'));
     process.exit(0);
   }
 

@@ -55,91 +55,34 @@ export type StreamFn = (args: StreamArgs) => Promise<StreamResult>;
 
 const now = (): number => performance.now();
 
-/** Default provider streaming. Anthropic uses its SDK; OpenAI + xAI share the
- *  OpenAI-compatible chat API (xAI just swaps the base URL). */
+/** All agents answer through the Vercel AI Gateway — one key (`AI_GATEWAY_API_KEY`),
+ *  unified billing, every provider behind `provider/model`. The ONE exception is a
+ *  grounded Anthropic turn: the MCP connector is an Anthropic-Messages feature the
+ *  OpenAI-compatible gateway can't carry, so those go direct to Anthropic. */
+export const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1';
+
 export const streamAnswer: StreamFn = (args) => {
-  switch (args.provider) {
-    case 'anthropic':
-      return streamAnthropic(args);
-    case 'openai':
-    case 'xai':
-      return streamOpenAiCompatible(args);
-    default:
-      return Promise.reject(
-        new Error(
-          `provider "${args.provider}" has no default streaming adapter — override answer() in agent.ts`,
-        ),
-      );
-  }
+  if (args.mcp) return streamAnthropicGrounded(args);
+  return streamViaGateway(args);
 };
 
-async function streamAnthropic(args: StreamArgs): Promise<StreamResult> {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const t0 = now();
-  const state = newState();
-  const opts = args.signal ? { signal: args.signal } : {};
-  try {
-    if (args.mcp) {
-      // Grounded turn: beta Messages API + the remote-MCP connector. The provider
-      // drives the tool loop, so we still just read the streamed text.
-      const stream = client.beta.messages.stream(
-        {
-          model: args.model,
-          max_tokens: args.maxTokens,
-          system: args.system,
-          messages: [{ role: 'user', content: args.user }],
-          betas: [ANTHROPIC_MCP_BETA],
-          mcp_servers: [
-            {
-              type: 'url',
-              name: 'ably-os',
-              url: args.mcp.url,
-              authorization_token: args.mcp.authorizationToken,
-              tool_configuration: { allowed_tools: [...args.mcp.allowedTools] },
-            },
-          ],
-        },
-        opts,
-      );
-      stream.on('text', (delta: string) => onText(state, delta, t0, args));
-      await stream.finalMessage();
-    } else {
-      const stream = client.messages.stream(
-        {
-          model: args.model,
-          max_tokens: args.maxTokens,
-          system: args.system,
-          messages: [{ role: 'user', content: args.user }],
-        },
-        opts,
-      );
-      stream.on('text', (delta: string) => onText(state, delta, t0, args));
-      await stream.finalMessage();
-    }
-  } catch (err) {
-    if (!isAbort(err, args.signal)) throw err;
-    state.aborted = true;
-  }
-  return finalize(state, t0);
+/** The gateway model id: `provider/model` (e.g. `anthropic/claude-opus-4-8`). */
+export function gatewayModel(provider: Provider, model: string): string {
+  return `${provider}/${model}`;
 }
 
-async function streamOpenAiCompatible(args: StreamArgs): Promise<StreamResult> {
-  const isXai = args.provider === 'xai';
+async function streamViaGateway(args: StreamArgs): Promise<StreamResult> {
   const client = new OpenAI({
-    apiKey: process.env[isXai ? 'XAI_API_KEY' : 'OPENAI_API_KEY'],
-    ...(isXai ? { baseURL: 'https://api.x.ai/v1' } : {}),
+    apiKey: process.env.AI_GATEWAY_API_KEY,
+    baseURL: GATEWAY_BASE_URL,
   });
   const t0 = now();
   const state = newState();
   try {
     const stream = await client.chat.completions.create(
       {
-        model: args.model,
-        // OpenAI's current models (gpt-5.x, o-series) reject `max_tokens` and
-        // require `max_completion_tokens`; xAI's grok still uses `max_tokens`.
-        ...(isXai
-          ? { max_tokens: args.maxTokens }
-          : { max_completion_tokens: args.maxTokens }),
+        model: gatewayModel(args.provider, args.model),
+        max_tokens: args.maxTokens,
         stream: true,
         messages: [
           { role: 'system', content: args.system },
@@ -152,6 +95,43 @@ async function streamOpenAiCompatible(args: StreamArgs): Promise<StreamResult> {
       const delta = chunk.choices[0]?.delta?.content ?? '';
       if (delta) onText(state, delta, t0, args);
     }
+  } catch (err) {
+    if (!isAbort(err, args.signal)) throw err;
+    state.aborted = true;
+  }
+  return finalize(state, t0);
+}
+
+/** Grounded turn: direct Anthropic Messages API + the remote-MCP connector (the
+ *  provider drives the tool loop; we read the streamed text). Needs
+ *  ANTHROPIC_API_KEY — the gateway can't carry the connector. */
+async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> {
+  const mcp = args.mcp!;
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const t0 = now();
+  const state = newState();
+  try {
+    const stream = client.beta.messages.stream(
+      {
+        model: args.model,
+        max_tokens: args.maxTokens,
+        system: args.system,
+        messages: [{ role: 'user', content: args.user }],
+        betas: [ANTHROPIC_MCP_BETA],
+        mcp_servers: [
+          {
+            type: 'url',
+            name: 'ably-os',
+            url: mcp.url,
+            authorization_token: mcp.authorizationToken,
+            tool_configuration: { allowed_tools: [...mcp.allowedTools] },
+          },
+        ],
+      },
+      args.signal ? { signal: args.signal } : {},
+    );
+    stream.on('text', (delta: string) => onText(state, delta, t0, args));
+    await stream.finalMessage();
   } catch (err) {
     if (!isAbort(err, args.signal)) throw err;
     state.aborted = true;

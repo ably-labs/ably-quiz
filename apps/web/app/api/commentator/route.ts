@@ -51,8 +51,8 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'quizId and standings are required' }, { status: 400 });
   }
   const apiKey = process.env.ABLY_API_KEY;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || !anthropicKey) {
+  // Fable's commentary streams through the Vercel AI Gateway like every agent turn.
+  if (!apiKey || !process.env.AI_GATEWAY_API_KEY) {
     return NextResponse.json({ error: 'server keys not configured' }, { status: 500 });
   }
 

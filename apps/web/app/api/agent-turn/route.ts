@@ -97,10 +97,15 @@ export async function POST(req: Request): Promise<Response> {
   emitThinking({ slug, idx: question.idx, phase: 'thinking', text: '' });
   let lastEmit = 0;
 
-  // Live MCP grounding (§S6, Option A): only when the host has authenticated
-  // AND the provider supports the MCP connector (Anthropic today; grok/gpt run
-  // ungrounded). The token is used for this request only — never stored/logged.
-  const grounded = Boolean(mcpToken) && agent.manifest.provider === 'anthropic';
+  // Live MCP grounding (§S6, Option A): only when the host has authenticated,
+  // the provider supports the MCP connector (Anthropic), AND we have a direct
+  // Anthropic key — grounded turns bypass the gateway because the connector is an
+  // Anthropic-Messages feature. Everything else answers through the gateway.
+  // Token is used for this request only — never stored/logged.
+  const grounded =
+    Boolean(mcpToken) &&
+    agent.manifest.provider === 'anthropic' &&
+    Boolean(process.env.ANTHROPIC_API_KEY);
 
   // Run the tested answer core. A throw/timeout scores 0 — never stalls the quiz.
   let outcome;

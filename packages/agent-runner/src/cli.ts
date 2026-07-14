@@ -13,7 +13,6 @@ import { parseArgs } from 'node:util';
 import { config as loadEnv } from 'dotenv';
 import { loadRegistry, type LoadedAgent } from './registry';
 import { runLiveAgent, type LiveAgent } from './live-agent';
-import type { Provider } from './schema';
 
 // Paths relative to this file (packages/agent-runner/src/cli.ts).
 const REPO_ROOT = new URL('../../../', import.meta.url);
@@ -22,12 +21,6 @@ const ENV_LOCAL = fileURLToPath(new URL('.env.local', REPO_ROOT));
 // The shared digest is curated at S4.3; injected when present (§B2.7 step 4).
 const DIGEST_PATH = fileURLToPath(new URL('../../core/src/ably-digest.md', import.meta.url));
 
-/** Which env var each provider's default adapter reads (providers.ts). */
-const PROVIDER_KEY: Partial<Record<Provider, string>> = {
-  anthropic: 'ANTHROPIC_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  xai: 'XAI_API_KEY',
-};
 
 async function main(): Promise<void> {
   loadEnv({ path: ENV_LOCAL });
@@ -63,26 +56,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Skip agents whose provider key is absent — the machine has no OpenAI key, so
-  // an OpenAI agent is skipped (recorded), never a hard failure (§B0 environment).
-  const runnable = candidates.filter((a) => {
-    const key = PROVIDER_KEY[a.manifest.provider];
-    if (!key) {
-      console.warn(
-        `skip ${a.manifest.slug}: provider "${a.manifest.provider}" has no default adapter`,
-      );
-      return false;
-    }
-    if (!process.env[key]) {
-      console.warn(`skip ${a.manifest.slug}: ${key} not set`);
-      return false;
-    }
-    return true;
-  });
-  if (runnable.length === 0) {
-    console.error('no runnable agents (missing provider keys)');
+  // All agents answer through the Vercel AI Gateway (one key, unified billing).
+  if (!process.env.AI_GATEWAY_API_KEY) {
+    console.error('AI_GATEWAY_API_KEY not set — agents run through the Vercel AI Gateway.');
     process.exit(1);
   }
+  const runnable = candidates;
 
   console.log(
     `agents:start quiz=${quizId} base=${authBaseUrl} — ${runnable.length} agent(s): ` +
