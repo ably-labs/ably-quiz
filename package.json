@@ -13,6 +13,8 @@
     "build": "pnpm --filter @ably-quiz/web build",
     "agents:start": "pnpm --filter @ably-quiz/agent-runner start",
     "agents:study": "pnpm --filter @ably-quiz/agent-runner study",
+    "agent:new": "pnpm --filter @ably-quiz/agent-runner new",
+    "agent:test": "pnpm --filter @ably-quiz/agent-runner test:agent",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

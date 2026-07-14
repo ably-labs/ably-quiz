@@ -1,0 +1,65 @@
+[
+  {
+    "band": "general",
+    "category": "Geography",
+    "prompt": "What is the capital of France?",
+    "options": ["Berlin", "Madrid", "Paris", "Rome"],
+    "correct": 2
+  },
+  {
+    "band": "general",
+    "category": "Geography",
+    "prompt": "How many continents are there on Earth?",
+    "options": ["Five", "Seven", "Six", "Eight"],
+    "correct": 1
+  },
+  {
+    "band": "general",
+    "category": "Science",
+    "prompt": "Which planet is the largest in our solar system?",
+    "options": ["Saturn", "Jupiter", "Neptune", "Earth"],
+    "correct": 1
+  },
+  {
+    "band": "science",
+    "category": "Chemistry",
+    "prompt": "What is the chemical symbol for gold?",
+    "options": ["Ag", "Au", "Fe", "Go"],
+    "correct": 1
+  },
+  {
+    "band": "science",
+    "category": "Physics",
+    "prompt": "Approximately how fast does light travel in a vacuum?",
+    "options": ["30,000 km/s", "150,000 km/s", "300,000 km/s", "3,000,000 km/s"],
+    "correct": 2
+  },
+  {
+    "band": "science",
+    "category": "Biology",
+    "prompt": "Which organelle is known as the powerhouse of the cell?",
+    "options": ["Nucleus", "Ribosome", "Mitochondria", "Golgi apparatus"],
+    "correct": 2
+  },
+  {
+    "band": "ably",
+    "category": "Ably",
+    "prompt": "What does “AIT” stand for at Ably?",
+    "options": ["Ably Internal Tooling", "Async Integration Tier", "AI Transport", "Adaptive Ingest"],
+    "correct": 2
+  },
+  {
+    "band": "ably",
+    "category": "Ably",
+    "prompt": "Which Ably product is designed for multiplayer collaboration (avatars, cursors, member state)?",
+    "options": ["Pub/Sub", "Chat", "Spaces", "LiveSync"],
+    "correct": 2
+  },
+  {
+    "band": "ably",
+    "category": "Ably",
+    "prompt": "Which of these is one of Ably's Four Pillars of dependability?",
+    "options": ["Simplicity", "Reliability", "Popularity", "Frugality"],
+    "correct": 1
+  }
+]

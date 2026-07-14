@@ -10,6 +10,8 @@
   "scripts": {
     "start": "tsx src/cli.ts",
     "study": "tsx src/study-cli.ts",
+    "new": "tsx src/new-cli.ts",
+    "test:agent": "tsx src/test-cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
