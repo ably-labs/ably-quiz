@@ -1,4 +1,4 @@
-# Matt Fable — crib
+# Matt Opus — crib
 
 Pre-learned by `agents:study` from https://ably.com/llms.txt — the Ably product & concept
 docs this agent studied. Injected into the system prompt alongside the shared digest.
