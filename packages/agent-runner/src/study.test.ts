@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ABLY_LLMS_TXT, ablyDocsStudy, parseLlmsTxt } from './study';
+import {
+  ABLY_LLMS_TXT,
+  ABLY_MCP_STUDY_TOPICS,
+  ablyDocsStudy,
+  ablyMcpStudy,
+  ablyMcpStudyInstruction,
+  parseLlmsTxt,
+} from './study';
 import type { AgentManifest } from './schema';
 
 const FIXTURE = `# Ably docs
@@ -90,5 +97,47 @@ describe('ablyDocsStudy', () => {
     // the source; the priority sort must pull it ahead of e.g. "Channel rules".
     expect(crib).toContain('About AI Transport');
     expect(crib.indexOf('About AI Transport')).toBeLessThan(crib.indexOf('Channel rules'));
+  });
+});
+
+describe('ablyMcpStudy (§S6.3)', () => {
+  const noFetch = () => Promise.reject(new Error('should not fetch'));
+
+  it('sends a topic-driven, public-safe instruction to the research hook and wraps the notes', async () => {
+    let seen = '';
+    const crib = await ablyMcpStudy({
+      agent,
+      digest: 'D',
+      fetchText: noFetch,
+      research: (instruction) => {
+        seen = instruction;
+        return Promise.resolve('## Products\n- Pub/Sub — realtime channels.');
+      },
+    });
+    // The instruction carries the topics + the open-source guardrail.
+    expect(seen).toContain(ABLY_MCP_STUDY_TOPICS[0]);
+    expect(seen).toMatch(/public.*open-source/i);
+    expect(seen).toMatch(/do not include anything confidential/i);
+    // The crib wraps the researched notes with a header naming the strategy.
+    expect(crib).toContain('Matt Opus — crib');
+    expect(crib).toContain('ably-mcp');
+    expect(crib).toContain('Pub/Sub — realtime channels.');
+  });
+
+  it('throws (so the CLI skips) when no research hook is wired', async () => {
+    await expect(
+      ablyMcpStudy({ agent, digest: '', fetchText: noFetch }),
+    ).rejects.toThrow(/MCP grounding/i);
+  });
+
+  it('throws when research returns empty notes rather than emit a hollow crib', async () => {
+    await expect(
+      ablyMcpStudy({ agent, digest: '', fetchText: noFetch, research: () => Promise.resolve('   ') }),
+    ).rejects.toThrow(/no notes/i);
+  });
+
+  it('builds an instruction that lists every study topic', () => {
+    const instruction = ablyMcpStudyInstruction(agent);
+    for (const topic of ABLY_MCP_STUDY_TOPICS) expect(instruction).toContain(topic);
   });
 });

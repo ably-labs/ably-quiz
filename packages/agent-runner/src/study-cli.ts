@@ -9,8 +9,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { streamAnswer } from './providers';
 import { loadRegistry } from './registry';
-import { ablyDocsStudy, type StudyContext, type StudyFn } from './study';
+import { ablyDocsStudy, ablyMcpStudy, type StudyContext, type StudyFn } from './study';
 
 const REPO_ROOT = new URL('../../../', import.meta.url);
 const AGENTS_DIR = fileURLToPath(new URL('agents/', REPO_ROOT));
@@ -19,12 +20,44 @@ const DIGEST_PATH = fileURLToPath(new URL('../../core/src/ably-digest.md', impor
 /** Named study strategies an agent.json can select via `"study"`. */
 const STRATEGIES: Record<string, StudyFn> = {
   'ably-docs': ablyDocsStudy,
+  'ably-mcp': ablyMcpStudy,
 };
+
+// MCP-grounded study wiring (§S6.3). Runs locally under Matt's MCP token; the
+// connector is an Anthropic-Messages feature (like answer-time grounding), so it
+// goes direct to Anthropic, not the gateway. A strong model is worth it — study
+// runs rarely and offline. Read-only connector tools; the catalog is pre-injected.
+const MCP_STUDY_MODEL = 'claude-opus-4-8';
+const MCP_STUDY_SYSTEM =
+  'You are a meticulous researcher assembling a quiz crib about Ably. Ground every claim in the read-only Ably knowledge tools you can call; never invent facts.';
+const MCP_CONNECTOR_TOOLS = ['callTool', 'getContext'] as const;
+const DEFAULT_MCP_URL = 'https://your-mcp-server.example.com/mcp';
+
+/** Build the `research` hook when MCP creds are present; else undefined so the
+ *  `ably-mcp` strategy is skipped gracefully (never a hard failure). */
+function makeResearch(): StudyContext['research'] {
+  const token = process.env.ABLY_MCP_AUTH;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!token || !anthropicKey) return undefined;
+  const url = process.env.ABLY_MCP_URL || DEFAULT_MCP_URL;
+  return async (instruction: string) => {
+    const res = await streamAnswer({
+      provider: 'anthropic',
+      model: MCP_STUDY_MODEL,
+      system: MCP_STUDY_SYSTEM,
+      user: instruction,
+      maxTokens: 2000,
+      mcp: { url, authorizationToken: token, allowedTools: MCP_CONNECTOR_TOOLS },
+    });
+    return res.text;
+  };
+}
 
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { agent: { type: 'string' } } });
 
   const digest = (await readOptional(DIGEST_PATH)) ?? '';
+  const research = makeResearch();
   const { agents, errors } = await loadRegistry(AGENTS_DIR);
   for (const e of errors) console.warn(`skip ${e.slug}: ${e.error}`);
 
@@ -46,7 +79,15 @@ async function main(): Promise<void> {
       console.warn(`${a.manifest.slug}: unknown study strategy "${name}" — skipped`);
       continue;
     }
-    const ctx: StudyContext = { agent: a.manifest, digest, fetchText };
+    // MCP study needs credentials; without them, skip (keeping the existing crib)
+    // rather than fail — matches the "missing key → skip gracefully" rule.
+    if (name === 'ably-mcp' && !research) {
+      console.log(
+        `${a.manifest.slug}: ably-mcp study skipped — no MCP creds (set ABLY_MCP_AUTH + ANTHROPIC_API_KEY)`,
+      );
+      continue;
+    }
+    const ctx: StudyContext = { agent: a.manifest, digest, fetchText, research };
     try {
       const crib = await study(ctx);
       await writeFile(join(a.dir, 'crib.md'), crib.endsWith('\n') ? crib : `${crib}\n`, 'utf8');

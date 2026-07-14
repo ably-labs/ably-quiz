@@ -16,6 +16,10 @@ export type StudyContext = {
   digest: string;
   /** Fetch a public URL as text (injectable so studies are unit-testable). */
   fetchText: (url: string) => Promise<string>;
+  /** MCP-grounded research (§S6.3): run a read-only lookup against Ably knowledge
+   *  and return synthesized notes. Present only when the study CLI has MCP creds;
+   *  the `ably-mcp` strategy skips gracefully without it. Injectable for tests. */
+  research?: (instruction: string) => Promise<string>;
 };
 
 /** An agent's `agent.ts` may `export` this to pre-learn. Returns the crib markdown. */
@@ -98,4 +102,71 @@ function renderCrib(agent: AgentManifest, entries: DocEntry[]): string {
   for (const e of entries) lines.push(`- **${e.title}** — ${e.description}`);
   lines.push('');
   return lines.join('\n');
+}
+
+// --- MCP-powered study (§S6.3) ----------------------------------------------
+// The meta-game's richer path: instead of listing doc titles, an agent trawls
+// Ably knowledge through the read-only MCP MCP and synthesizes a crib of
+// quiz-ready facts. Needs credentials, so it's the study CLI that wires the
+// `research` hook (Anthropic MCP connector); here we stay pure + testable.
+
+/** The spine of an MCP-grounded crib — the topics worth cramming for a
+ *  Carbon-vs-Silicon company quiz. Public-safe product/technical knowledge only. */
+export const ABLY_MCP_STUDY_TOPICS = [
+  'Each Ably product (Pub/Sub, Chat, Spaces, LiveObjects, LiveSync, AI Transport): what it is, the problem it solves, and one or two standout capabilities',
+  'Core realtime concepts a quiz might probe: channels, presence, history & rewind, connection state recovery, message ordering, token vs API-key auth, capabilities',
+  'What makes Ably distinctive: the global edge network, the pillars of dependability (performance, integrity, reliability, availability), and any published guarantees',
+  'Concrete, quotable specifics: LiveObjects data types (LiveMap / LiveCounter), what counts as a message, channel rules / namespaces, notable platform limits',
+] as const;
+
+// This repo is destined for open source (§S6.4/6.5), so a committed crib must
+// never leak internal data — the instruction makes that a hard constraint.
+const MCP_STUDY_GUARDRAIL =
+  'Only include information safe to publish in a PUBLIC, open-source repository: Ably product and technical knowledge. Do NOT include anything confidential — no revenue, named customers, internal roadmaps, unreleased plans, security specifics, or employee data.';
+
+/** The research prompt an `ably-mcp` study sends through the grounded model. */
+export function ablyMcpStudyInstruction(
+  agent: AgentManifest,
+  topics: readonly string[] = ABLY_MCP_STUDY_TOPICS,
+): string {
+  return [
+    `You are ${agent.name}, studying Ably so you can win a company quiz. Use the read-only Ably knowledge lookups available to you to research the topics below, then write a crib sheet of crisp, quotable facts to keep at hand.`,
+    '',
+    'Topics:',
+    ...topics.map((t) => `- ${t}`),
+    '',
+    'Write tight Markdown bullets grouped under short headings. Prefer specific facts (names, numbers, guarantees) over prose. Ground every claim in what the tools return — do not invent. Aim for 250–500 words, notes only, no preamble.',
+    '',
+    MCP_STUDY_GUARDRAIL,
+  ].join('\n');
+}
+
+/**
+ * MCP-powered study for Matt's roster (§S6.3): research Ably knowledge through
+ * the read-only MCP and synthesize a facts crib. Requires `ctx.research` (wired
+ * by the study CLI when MCP creds are present); without it the strategy throws
+ * so the CLI can skip the agent gracefully rather than emit an empty crib.
+ */
+export const ablyMcpStudy: StudyFn = async (ctx) => {
+  if (!ctx.research) {
+    throw new Error(
+      'ably-mcp study needs MCP grounding — set ANTHROPIC_API_KEY + ABLY_MCP_AUTH (+ optional ABLY_MCP_URL)',
+    );
+  }
+  const notes = (await ctx.research(ablyMcpStudyInstruction(ctx.agent))).trim();
+  if (!notes) throw new Error('ably-mcp study returned no notes');
+  return renderMcpCrib(ctx.agent, notes);
+};
+
+function renderMcpCrib(agent: AgentManifest, notes: string): string {
+  return [
+    `# ${agent.name} — crib`,
+    '',
+    'Pre-learned by `agents:study` (strategy `ably-mcp`): Ably knowledge researched',
+    'through the read-only MCP MCP and synthesized into quiz-ready notes. Injected',
+    'into the system prompt alongside the shared digest. Public-safe knowledge only.',
+    '',
+    notes,
+    '',
+  ].join('\n');
 }
