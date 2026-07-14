@@ -84,12 +84,12 @@ hand: if the **host** tab itself is the thing that dropped and can't reconnect, 
 
 ## Known limitations
 
-- **Agent think-aloud still streams on the wire.** The on-screen UI no longer shows
-  agent reasoning mid-question (it was leaking answers to anyone reading the shared
-  projector) — during an open question `/screen` shows only a status strip
-  (_thinking…_ / ✓ / ⚠️), and full quips appear at reveal. **But** the reasoning text
-  still streams live on the `quiz-agent:{id}:{slug}` channels, and players hold
-  read-only `subscribe`/`history` on those channels, so a devtools-savvy player could
-  subscribe and peek at the answer before reveal. The clean fix — hold quips host-side
-  and publish only at reveal, or gate the reasoning stream behind a dedicated screen
-  role — is planned, not yet shipped.
+- **Agent channels are status-only mid-question; quips release at reveal (S5.3).** The
+  on-demand `/api/agent-turn` publishes only status (_thinking…_ / ✓ / ⚠️) to the
+  player-readable `quiz-agent:{id}:{slug}` channels — no reasoning text, no quip — so a
+  devtools-savvy player can no longer peek at the answer on the wire. Each agent's
+  one-liner rides the host-subscribe-only answers fan-in; the host gathers them per
+  question and re-releases them at reveal via an `agent-quips` message on the main
+  channel, which is where `/screen` reads the "Agent takes". (The persistent co-hosted
+  runner, `pnpm agents:start`, is a separate dev path and still streams its think-aloud
+  over AIT — the default on-demand path above does not.)

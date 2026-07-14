@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   answerMessageSchema,
   controlMessageSchema,
+  parseAgentQuips,
   parseAgentThinking,
   parseCommentary,
   parseAnswerMessage,
@@ -31,6 +32,46 @@ describe('answer message', () => {
     expect(parseAnswerMessage({ idx: 1, choice: 'C' })).toEqual({ idx: 1, choice: 'C' });
     expect(parseAnswerMessage('nope')).toBeNull();
     expect(parseAnswerMessage({ idx: 1 })).toBeNull();
+  });
+
+  it('round-trips with and without an agent quip (§S5.3)', () => {
+    // Player answer: no quip.
+    expect(parseAnswerMessage({ idx: 2, choice: 'B' })).toEqual({ idx: 2, choice: 'B' });
+    // Agent answer: carries the one-liner on the host-only fan-in.
+    expect(parseAnswerMessage({ idx: 2, choice: 'B', confidence: 0.8, quip: 'Elementary.' })).toEqual(
+      { idx: 2, choice: 'B', confidence: 0.8, quip: 'Elementary.' },
+    );
+    // A non-string quip is rejected (can't be smuggled through).
+    expect(answerMessageSchema.safeParse({ idx: 2, choice: 'B', quip: 42 }).success).toBe(false);
+  });
+});
+
+describe('agent quips message (§S5.3)', () => {
+  it('parses a valid reveal-time quips batch', () => {
+    expect(
+      parseAgentQuips({
+        idx: 3,
+        quips: [
+          { slug: 'matt-opus', quip: 'Too easy.' },
+          { slug: 'matt-grok', quip: 'Called it.' },
+        ],
+      }),
+    ).toEqual({
+      idx: 3,
+      quips: [
+        { slug: 'matt-opus', quip: 'Too easy.' },
+        { slug: 'matt-grok', quip: 'Called it.' },
+      ],
+    });
+    // An empty batch is still structurally valid (host only publishes non-empty ones).
+    expect(parseAgentQuips({ idx: 0, quips: [] })).toEqual({ idx: 0, quips: [] });
+  });
+
+  it('rejects a negative idx, a missing slug, or a non-array', () => {
+    expect(parseAgentQuips({ idx: -1, quips: [] })).toBeNull();
+    expect(parseAgentQuips({ idx: 0, quips: [{ quip: 'no slug' }] })).toBeNull();
+    expect(parseAgentQuips({ idx: 0, quips: 'nope' })).toBeNull();
+    expect(parseAgentQuips('nope')).toBeNull();
   });
 });
 

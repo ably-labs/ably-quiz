@@ -69,6 +69,10 @@ export const answerMessageSchema = z.object({
   idx: z.number().int().nonnegative(),
   choice: choiceSchema,
   confidence: z.number().min(0).max(1).optional(),
+  // Agents attach their one-liner here; players omit it. The answers fan-in is
+  // host-subscribe-only (§B2.5), so the quip can't leak to a player mid-question
+  // — the host re-releases it at reveal via `agent-quips` on the main channel (S5.3).
+  quip: z.string().optional(),
 });
 export type AnswerMessage = z.infer<typeof answerMessageSchema>;
 
@@ -88,9 +92,12 @@ export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 
 // --- Agent thinking (§S4.5 on-screen thinking) ------------------------------
 // Published to quiz-agent:{id}:{slug} during an on-demand turn so /screen can
-// show each agent's live think-aloud + status. Ephemeral, scoped to a question
-// idx: `phase:'thinking'` carries the accumulating think-aloud (throttled), and
-// a final `phase:'answered'` carries the settled reasoning + quip.
+// show each agent's STATUS. Players hold read-only subscribe on this channel
+// (§B2.5), so as of S5.3 it carries status ONLY — no reasoning text, no quip —
+// to close the mid-question wire-leak: `thinking`/`answered` ship empty `text`
+// and no `quip`; only `error` carries a short message (which can't reveal the
+// answer). `text`/`quip` stay optional in the schema for back-compat, but the
+// wire no longer populates them for the reasoning path.
 export const agentThinkingSchema = z.object({
   slug: z.string().min(1),
   idx: z.number().int().nonnegative(),
@@ -100,6 +107,18 @@ export const agentThinkingSchema = z.object({
   quip: z.string().optional(),
 });
 export type AgentThinkingMessage = z.infer<typeof agentThinkingSchema>;
+
+// --- Reveal-time agent quips (§S5.3) ----------------------------------------
+// The agents' one-liners for a question, released TOGETHER only at reveal. Agents
+// carry their quip on the host-subscribe-only answers fan-in; the host gathers
+// them per idx and re-publishes this batch on the main channel at reveal, so
+// /screen can show the "takes" without ever putting an answer-revealing quip on a
+// player-readable channel while the question is open.
+export const agentQuipsSchema = z.object({
+  idx: z.number().int().nonnegative(),
+  quips: z.array(z.object({ slug: z.string().min(1), quip: z.string() })),
+});
+export type AgentQuips = z.infer<typeof agentQuipsSchema>;
 
 // --- LiveObjects shapes (§B2.3) ---------------------------------------------
 export const quizConfigSchema = z.object({
@@ -159,6 +178,11 @@ export function parseControlMessage(data: unknown): ControlMessage | null {
 
 export function parseAgentThinking(data: unknown): AgentThinkingMessage | null {
   const result = agentThinkingSchema.safeParse(data);
+  return result.success ? result.data : null;
+}
+
+export function parseAgentQuips(data: unknown): AgentQuips | null {
+  const result = agentQuipsSchema.safeParse(data);
   return result.success ? result.data : null;
 }
 

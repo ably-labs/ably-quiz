@@ -199,56 +199,56 @@ export function AgentStatusStrip({
   );
 }
 
-/** Agents' one-liners at reveal (§S5.2). Shows ONLY the settled `quip` — never
- *  the full reasoning, which leaked answers while the question was open. Skips
- *  agents with no quip yet; still surfaces the ⚠️ error state so a failed turn
- *  stays visible. (The underlying think-aloud text still flows on the agent
- *  channels for history/inspector use — it's simply no longer rendered here.) */
+/** Agents' one-liners at reveal (§S5.3). Quips come from the reveal-published
+ *  `agent-quips` payload (host-mediated off the answers fan-in) — NOT the agent
+ *  status channels, which carry status only mid-question to avoid leaking the
+ *  answer on the wire. `quips` is slug→one-liner for the revealed question; the
+ *  ⚠️ error state still comes from the status hook (the `error` phase is the one
+ *  thing still published there). Skips agents with neither a quip nor an error. */
 export function AgentQuipWall({
   agents,
+  quips,
   thinking,
 }: {
   agents: AgentRosterEntry[];
+  /** slug → one-liner for the revealed question (host-released at reveal). */
+  quips: Record<string, string>;
+  /** Status hook, used only for the ⚠️ error state (+ its short message). */
   thinking: Record<string, AgentThinkState>;
 }) {
   const cards = agents
-    .map((a) => ({ a, t: thinking[a.slug] }))
-    .filter(({ t }) => t?.phase === 'error' || (t?.phase === 'answered' && t.quip));
+    .map((a) => ({ a, quip: quips[a.slug], errored: thinking[a.slug]?.phase === 'error' }))
+    .filter(({ quip, errored }) => errored || quip);
   if (cards.length === 0) return null;
   return (
     <div>
       <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">Agent takes</h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.map(({ a, t }) => {
-          const errored = t?.phase === 'error';
-          return (
-            <div
-              key={a.slug}
-              className={`rounded-xl border p-3 ${
-                errored
-                  ? 'border-amber-800/60 bg-amber-950/20'
-                  : 'border-neutral-800 bg-neutral-900/40'
-              }`}
-            >
-              <div className="mb-1 flex items-center gap-2">
-                <span className="text-lg" aria-hidden>
-                  {a.emoji}
-                </span>
-                <span className="truncate font-semibold">{a.name}</span>
-                {errored && (
-                  <span className="ml-auto shrink-0 text-xs text-amber-400">⚠️ issue</span>
-                )}
-              </div>
-              {errored ? (
-                <p className="line-clamp-2 text-sm text-amber-300/80">
-                  {t?.text || 'failed to answer'}
-                </p>
-              ) : (
-                <p className="text-sm text-neutral-200 italic">“{t?.quip}”</p>
-              )}
+        {cards.map(({ a, quip, errored }) => (
+          <div
+            key={a.slug}
+            className={`rounded-xl border p-3 ${
+              errored
+                ? 'border-amber-800/60 bg-amber-950/20'
+                : 'border-neutral-800 bg-neutral-900/40'
+            }`}
+          >
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-lg" aria-hidden>
+                {a.emoji}
+              </span>
+              <span className="truncate font-semibold">{a.name}</span>
+              {errored && <span className="ml-auto shrink-0 text-xs text-amber-400">⚠️ issue</span>}
             </div>
-          );
-        })}
+            {errored ? (
+              <p className="line-clamp-2 text-sm text-amber-300/80">
+                {thinking[a.slug]?.text || 'failed to answer'}
+              </p>
+            ) : (
+              <p className="text-sm text-neutral-200 italic">“{quip}”</p>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -50,6 +50,12 @@ export default function ScreenPage() {
   const inQuestion = (view.phase === 'asking' || view.phase === 'locked') && q;
   const revealed = view.phase === 'revealed' && q;
   const ended = view.phase === 'podium' || view.phase === 'analysis' || view.phase === 'done';
+  // Quips are host-released at reveal (§S5.3); show only the revealed question's
+  // batch (gate on idx so a prior question's quips never bleed into this reveal).
+  const revealedQuips: Record<string, string> =
+    q && view.agentQuips && view.agentQuips.idx === q.idx
+      ? Object.fromEntries(view.agentQuips.quips.map((x) => [x.slug, x.quip]))
+      : {};
 
   return (
     <main className="mx-auto max-w-5xl px-8 py-10">
@@ -125,7 +131,11 @@ export default function ScreenPage() {
               <TugOfWar scoreboard={view.scoreboard} />
             </div>
           </div>
-          <AgentQuipWall agents={view.config?.agents ?? []} thinking={thinking} />
+          <AgentQuipWall
+            agents={view.config?.agents ?? []}
+            quips={revealedQuips}
+            thinking={thinking}
+          />
         </section>
       )}
 

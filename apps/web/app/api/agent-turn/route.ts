@@ -18,17 +18,6 @@ import { NextResponse } from 'next/server';
 import { ABLY_OS_CONNECTOR_TOOLS, ablyOsMcpUrl, groundingInstructions } from '@/lib/ably-os';
 import { AGENT_MODULES } from '@/lib/agent-modules.generated';
 
-/** Live think-aloud is the text before the answer JSON (the agent streams
- *  reasoning first, then a `{…}`). Strip from the first brace for display. */
-function thinkAloud(text: string): string {
-  const brace = text.indexOf('{');
-  return (brace === -1 ? text : text.slice(0, brace)).trim();
-}
-
-/** Throttle streamed thinking to ~1 publish / THROTTLE_MS so a 5-agent field
- *  doesn't flood Ably; the final `answered` message is always sent. */
-const THROTTLE_MS = 350;
-
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -93,15 +82,17 @@ export async function POST(req: Request): Promise<Response> {
     'utf8',
   ).catch(() => undefined);
 
-  // Publish the think-aloud to the agent's own channel so /screen can show it
-  // live (§S4.5). Fire-and-forget as the agent thinks; never block the turn.
+  // Publish STATUS to the agent's own channel so /screen can show a live
+  // thinking/answered/error indicator (§S4.5). Players hold read-only subscribe
+  // here (§B2.5), so as of S5.3 this channel carries status ONLY — no reasoning
+  // text, no quip — to close the mid-question wire-leak. Fire-and-forget; never
+  // blocks the turn.
   const rest = new Ably.Rest({ key: apiKey });
   const thinking = rest.channels.get(agentChannel(quizId, slug));
   const emitThinking = (msg: AgentThinkingMessage) => {
     void thinking.publish({ name: 'thinking', data: msg, clientId: `a:${slug}` }).catch(() => {});
   };
   emitThinking({ slug, idx: question.idx, phase: 'thinking', text: '' });
-  let lastEmit = 0;
 
   // Live MCP grounding (§S6, Option A): only when the host has authenticated,
   // the provider supports the MCP connector (Anthropic), AND we have a direct
@@ -113,12 +104,9 @@ export async function POST(req: Request): Promise<Response> {
     agent.manifest.provider === 'anthropic' &&
     Boolean(process.env.ANTHROPIC_API_KEY);
 
-  const onThinking = (_delta: string, full: string) => {
-    const now = Date.now();
-    if (now - lastEmit < THROTTLE_MS) return;
-    lastEmit = now;
-    emitThinking({ slug, idx: question.idx, phase: 'thinking', text: thinkAloud(full) });
-  };
+  // No `onThinking` here by design (S5.3): the reasoning think-aloud must not
+  // reach the player-readable agent channel. The answer core runs without a
+  // thinking sink; status comes from the emitThinking calls above/below.
   const groundingOpts = grounded
     ? {
         grounding: groundingInstructions(),
@@ -146,7 +134,6 @@ export async function POST(req: Request): Promise<Response> {
     outcome = await answerFn(agent.manifest, question, {
       digest,
       crib: agent.crib,
-      onThinking,
       ...groundingOpts,
     });
   } catch (err) {
@@ -158,29 +145,31 @@ export async function POST(req: Request): Promise<Response> {
       outcome = await answerFn(agent.manifest, question, {
         digest,
         crib: agent.crib,
-        onThinking,
       });
     } catch (err2) {
       return fail(err2);
     }
   }
 
-  // Settle the drawer with the final reasoning + quip, whether or not it answered.
-  emitThinking({
-    slug,
-    idx: question.idx,
-    phase: 'answered',
-    text: outcome.thinking,
-    quip: outcome.quip,
-  });
+  // Settle the status to `answered` — status ONLY, no reasoning text and no quip
+  // (S5.3). The quip rides the host-subscribe-only answers fan-in below and is
+  // released to /screen at reveal; it must never touch this player-readable channel.
+  emitThinking({ slug, idx: question.idx, phase: 'answered', text: '' });
 
   if (!outcome.choice) {
     return NextResponse.json({ slug, answered: false, timedOut: outcome.timedOut });
   }
 
+  // The quip travels with the answer on the fan-in (host-subscribe-only, §B2.5),
+  // so the host can gather quips per question and re-release them at reveal (S5.3).
   await rest.channels.get(answersChannel(quizId)).publish({
     name: 'answer',
-    data: { idx: question.idx, choice: outcome.choice, confidence: outcome.confidence },
+    data: {
+      idx: question.idx,
+      choice: outcome.choice,
+      confidence: outcome.confidence,
+      quip: outcome.quip,
+    },
     clientId: `a:${slug}`,
   });
 

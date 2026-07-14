@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  parseAnswerMessage,
   parseControlMessage,
   Quizmaster,
   type Choice,
@@ -16,6 +17,7 @@ import type { QuestionBroadcast } from '@/hooks/useQuizState';
 import {
   AblyBroadcaster,
   AblyLiveStore,
+  AGENT_QUIPS_EVENT,
   answersChannel,
   getMainChannel,
   INITIAL_STATE,
@@ -70,6 +72,13 @@ export function useHostQuiz(
   counterfactual: CounterfactualPayload | null;
 } {
   const qmRef = useRef<Quizmaster | null>(null);
+  // The writable main channel, stashed so `reveal` can re-publish the gathered
+  // quips at reveal time (§S5.3) without re-deriving the channel/modes.
+  const mainRef = useRef<Ably.RealtimeChannel | null>(null);
+  // Agents' one-liners captured off the host-only answers fan-in, keyed idx→slug→quip.
+  // Web-only: the quizmaster engine never sees quips (kept out of core). Released
+  // to /screen at reveal via `agent-quips` on the main channel (§S5.3).
+  const quipsRef = useRef<Map<number, Map<string, string>>>(new Map());
   const [state, setState] = useState<QuizState>({ phase: 'lobby', questionIdx: -1 });
   const [correct, setCorrect] = useState<Choice | null>(null);
   const [question, setQuestion] = useState<QuestionBroadcast | null>(null);
@@ -98,6 +107,7 @@ export function useHostQuiz(
     for (const a of quiz.config.agents ?? []) qm.setDisplayName(`a:${a.slug}`, a.name);
 
     const main = getMainChannel(client, quiz.quizId, { write: true });
+    mainRef.current = main; // reused by `reveal` to release quips (§S5.3)
     const answers = client.channels.get(answersChannel(quiz.quizId));
     const refresh = async () => {
       const roster = presenceToMembers(await main.presence.get());
@@ -121,12 +131,28 @@ export function useHostQuiz(
       const openIdx = qm.getState().questionIdx;
       setAnsweredIds(qm.getAnswerLog().filter((e) => e.idx === openIdx).map((e) => e.clientId));
     };
+    // Stash an agent's reveal-time quip off the fan-in (host-subscribe-only, so it
+    // never reaches players mid-question). Keyed idx→slug→quip; the engine ignores
+    // quips — this is a web-only capture released at reveal (§S5.3).
+    const captureQuip = (clientId: string, data: unknown) => {
+      if (!clientId.startsWith('a:')) return;
+      const parsed = parseAnswerMessage(data);
+      if (!parsed?.quip) return;
+      const slug = clientId.slice(2);
+      let byIdx = quipsRef.current.get(parsed.idx);
+      if (!byIdx) {
+        byIdx = new Map();
+        quipsRef.current.set(parsed.idx, byIdx);
+      }
+      byIdx.set(slug, parsed.quip);
+    };
     const onAnswer = (msg: Ably.Message) => {
       const raw: InboundAnswer = {
         clientId: msg.clientId ?? '',
         data: msg.data,
         serverTs: msg.timestamp ?? Date.now(),
       };
+      captureQuip(raw.clientId, raw.data);
       if (ready) ingest(raw);
       else buffer.push(raw);
     };
@@ -202,11 +228,23 @@ export function useHostQuiz(
       cancelled = true;
       disposed = true;
       qmRef.current = null;
+      mainRef.current = null;
       answers.unsubscribe();
       main.unsubscribe('control', onControl);
       main.presence.unsubscribe();
     };
   }, [conn, quiz]);
+
+  // Release the just-revealed question's agent quips on the main channel (§S5.3).
+  // Fire-and-forget; only publishes when there are quips to show. Stable (refs
+  // only), so it doesn't churn the `controls` memo.
+  const publishQuips = useCallback((idx: number) => {
+    const main = mainRef.current;
+    const byIdx = quipsRef.current.get(idx);
+    if (!main || !byIdx || byIdx.size === 0) return;
+    const quips = [...byIdx].map(([slug, quip]) => ({ slug, quip }));
+    void main.publish(AGENT_QUIPS_EVENT, { idx, quips }).catch(() => {});
+  }, []);
 
   const run = useCallback(async (fn: (qm: Quizmaster) => Promise<void>) => {
     const qm = qmRef.current;
@@ -237,12 +275,18 @@ export function useHostQuiz(
           await qm.askNext();
         }),
       lock: () => run((qm) => qm.lock()),
-      reveal: () => run((qm) => qm.reveal()),
+      reveal: () =>
+        run(async (qm) => {
+          await qm.reveal();
+          // The wire-safe quip release: at reveal, push this question's gathered
+          // agent one-liners to the main channel for /screen (§S5.3).
+          publishQuips(qm.getState().questionIdx);
+        }),
       podium: () => run((qm) => qm.podium()),
       analysis: () => run((qm) => qm.analysis()),
       done: () => run((qm) => qm.done()),
     }),
-    [run],
+    [run, publishQuips],
   );
 
   // Fire the commentator once when the quiz enters `analysis` (§B2.9). Standings

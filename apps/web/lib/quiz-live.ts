@@ -6,8 +6,10 @@ import type * as Ably from 'ably';
 import {
   answersChannel,
   mainChannel,
+  parseAgentQuips,
   parseControlMessage,
   parseCounterfactual,
+  type AgentQuips,
   type Broadcaster,
   type Choice,
   type ControlHistoryEntry,
@@ -23,6 +25,11 @@ import {
 
 /** Event name for the one-shot counterfactual payload on the main channel (§S5.1). */
 export const COUNTERFACTUAL_EVENT = 'counterfactual';
+
+/** Event name for the reveal-time agent quips batch on the main channel (§S5.3).
+ *  The host re-publishes each question's agent one-liners here at reveal — off
+ *  the player-readable agent channels — so /screen shows takes without a leak. */
+export const AGENT_QUIPS_EVENT = 'agent-quips';
 
 const EMPTY_TALLIES: Tallies = { A: 0, B: 0, C: 0, D: 0 };
 
@@ -252,6 +259,19 @@ export async function loadCounterfactual(
   for (const m of await pageAll(main)) {
     if (m.name !== COUNTERFACTUAL_EVENT) continue;
     const payload = parseCounterfactual(m.data);
+    if (payload) latest = payload; // forwards order → last match is newest
+  }
+  return latest;
+}
+
+/** Latest agent-quips batch from main-channel history — so a /screen that joins
+ *  or reloads mid-reveal still gets the current question's quips (§S5.3). Newest
+ *  wins; the reader gates it to the revealed idx. */
+export async function loadAgentQuips(main: Ably.RealtimeChannel): Promise<AgentQuips | null> {
+  let latest: AgentQuips | null = null;
+  for (const m of await pageAll(main)) {
+    if (m.name !== AGENT_QUIPS_EVENT) continue;
+    const payload = parseAgentQuips(m.data);
     if (payload) latest = payload; // forwards order → last match is newest
   }
   return latest;

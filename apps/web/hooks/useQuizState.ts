@@ -1,17 +1,21 @@
 'use client';
 
 import {
+  parseAgentQuips,
   parseControlMessage,
   parseCounterfactual,
+  type AgentQuips,
   type Choice,
   type CounterfactualPayload,
 } from '@ably-quiz/core';
 import { useEffect, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 import {
+  AGENT_QUIPS_EVENT,
   COUNTERFACTUAL_EVENT,
   getMainChannel,
   INITIAL_STATE,
+  loadAgentQuips,
   loadControlHistory,
   loadCounterfactual,
   subscribeQuizState,
@@ -34,6 +38,9 @@ export type QuizView = LiveQuizState & {
   correct: Choice | null;
   /** "By the way…" standings under every scoring algorithm — set at analysis (§S5.1). */
   counterfactual: CounterfactualPayload | null;
+  /** Agents' one-liners for the most recently revealed question, host-released at
+   *  reveal (§S5.3). Newest wins; the view gates it to the current revealed idx. */
+  agentQuips: AgentQuips | null;
 };
 
 /** Read-only quiz view for /screen and /play: control broadcasts drive the
@@ -43,6 +50,7 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
   const [question, setQuestion] = useState<QuestionBroadcast | null>(null);
   const [correct, setCorrect] = useState<Choice | null>(null);
   const [counterfactual, setCounterfactual] = useState<CounterfactualPayload | null>(null);
+  const [agentQuips, setAgentQuips] = useState<AgentQuips | null>(null);
 
   useEffect(() => {
     if (!conn) return;
@@ -81,6 +89,17 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
       if (payload) setCounterfactual((cur) => cur ?? payload);
     });
 
+    // Agent quips are released by the host at each reveal (§S5.3); catch them live,
+    // and re-derive the latest from history so a /screen that joins or reloads
+    // mid-reveal still shows the current question's takes. Newest wins.
+    void channel.subscribe(AGENT_QUIPS_EVENT, (msg) => {
+      const payload = parseAgentQuips(msg.data);
+      if (payload) setAgentQuips(payload);
+    });
+    void loadAgentQuips(channel).then((payload) => {
+      if (payload) setAgentQuips((cur) => cur ?? payload);
+    });
+
     void subscribeQuizState(channel, setLive).then((u) => {
       unsub = u;
     });
@@ -117,5 +136,5 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
     };
   }, [conn, quizId]);
 
-  return { ...live, question, correct, counterfactual };
+  return { ...live, question, correct, counterfactual, agentQuips };
 }

@@ -7,14 +7,16 @@ import type { Connection } from '@/lib/ably';
 
 export type AgentThinkState = {
   phase: 'thinking' | 'answered' | 'error';
+  /** Status-only as of S5.3: empty for thinking/answered, a short message for error.
+   *  Reasoning + quips no longer ride this channel (they leaked the answer). */
   text: string;
-  quip?: string;
   idx: number;
 };
 
-/** Live per-agent think-aloud for the current question (§S4.5 on-screen thinking).
- *  Subscribes to each declared agent's `quiz-agent:{id}:{slug}` channel — the
- *  on-demand turn publishes its reasoning there. Read-only; resets per question. */
+/** Live per-agent STATUS for the current question (§S4.5 / §S5.3). Subscribes to
+ *  each declared agent's `quiz-agent:{id}:{slug}` channel — the on-demand turn
+ *  publishes thinking/answered/error status there (status only; no reasoning, no
+ *  quip, to avoid a mid-question wire-leak). Read-only; resets per question. */
 export function useAgentThinking(
   conn: Connection | null,
   quizId: string,
@@ -39,7 +41,7 @@ export function useAgentThinking(
       setBySlug((prev) => {
         const existing = prev[m.slug];
         if (existing && m.idx < existing.idx) return prev; // ignore a prior question's tail
-        return { ...prev, [m.slug]: { phase: m.phase, text: m.text, quip: m.quip, idx: m.idx } };
+        return { ...prev, [m.slug]: { phase: m.phase, text: m.text, idx: m.idx } };
       });
     };
     channels.forEach((ch) => void ch.subscribe('thinking', handler));
