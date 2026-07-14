@@ -159,7 +159,7 @@ export default function HostPage() {
         {ended && (
           <div className="flex flex-wrap items-center gap-4">
             <p className="text-neutral-400">Quiz complete — results are on the screen.</p>
-            <a href="/" className="text-sm font-medium text-ably hover:underline">
+            <a href="/create" className="text-sm font-medium text-ably hover:underline">
               + New quiz
             </a>
           </div>
