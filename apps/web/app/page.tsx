@@ -354,6 +354,26 @@ export default function CreatePage() {
   );
 }
 
+/** Standard "opens in a new tab" glyph — a box with an arrow leaving the top-right. */
+function ExternalLinkIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`inline-block h-[1em] w-[1em] shrink-0 ${className}`}
+      aria-hidden
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+    </svg>
+  );
+}
+
 function CreatedView({ quiz, origin }: { quiz: StoredQuiz; origin: string }) {
   const joinUrl = `${origin}/play?quiz=${quiz.quizId}`;
   const screenUrl = `${origin}/screen?quiz=${quiz.quizId}`;
@@ -382,24 +402,32 @@ function CreatedView({ quiz, origin }: { quiz: StoredQuiz; origin: string }) {
         aria-label="Join QR code"
         dangerouslySetInnerHTML={{ __html: qr }}
       />
-      <p className="mt-3 font-mono text-sm text-neutral-300">{joinUrl}</p>
+      <a
+        href={joinUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 inline-flex items-center gap-1.5 font-mono text-sm text-neutral-300 transition hover:text-ink hover:underline"
+      >
+        {joinUrl}
+        <ExternalLinkIcon className="text-neutral-500" />
+      </a>
 
       <div className="mt-10 flex flex-wrap justify-center gap-3">
         <a
           href={screenUrl}
           target="_blank"
-          rel="noopener"
-          className="rounded-lg bg-ably px-5 py-3 font-semibold text-black"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg bg-ably px-5 py-3 font-semibold text-black"
         >
-          Open screen →
+          Open screen <ExternalLinkIcon />
         </a>
         <a
           href={hostUrl}
           target="_blank"
-          rel="noopener"
-          className="rounded-lg border border-neutral-700 px-5 py-3 font-semibold text-ink hover:border-neutral-500"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-5 py-3 font-semibold text-ink hover:border-neutral-500"
         >
-          Open host controls →
+          Open host controls <ExternalLinkIcon />
         </a>
       </div>
       <p className="mt-6 text-xs text-neutral-600">
