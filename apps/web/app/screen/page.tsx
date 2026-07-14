@@ -6,6 +6,7 @@ import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
 import {
   AgentThinkingWall,
+  CommentaryCard,
   Countdown,
   CounterfactualPanel,
   Podium,
@@ -119,16 +120,19 @@ export default function ScreenPage() {
 
       {ended && (
         <section className="space-y-8">
-          {commentary.text && (
-            <div className="rounded-2xl border border-ably/40 bg-ably/5 p-6">
-              <p className="mb-2 text-sm tracking-[0.3em] text-ably uppercase">the verdict</p>
-              <p className="text-xl leading-relaxed text-neutral-100">
-                {commentary.text}
-                {!commentary.done && <span className="ml-0.5 animate-pulse">▍</span>}
-              </p>
-            </div>
-          )}
-          <Podium scoreboard={view.scoreboard} agents={view.config?.agents} />
+          {/* Result first (podium), then the pundit's take between the stage and
+              the runners-up, then the detail — no shouting billboard (§S5.2). */}
+          <Podium
+            scoreboard={view.scoreboard}
+            agents={view.config?.agents}
+            interlude={
+              commentary.text ? (
+                <div className="mx-auto max-w-3xl">
+                  <CommentaryCard text={commentary.text} done={commentary.done} size="base" />
+                </div>
+              ) : undefined
+            }
+          />
           {view.counterfactual && (
             <CounterfactualPanel payload={view.counterfactual} agents={view.config?.agents} />
           )}

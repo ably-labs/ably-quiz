@@ -7,7 +7,7 @@ import type {
   ScoreboardEntry,
   Tallies,
 } from '@ably-quiz/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { AgentThinkState } from '@/hooks/useAgentThinking';
 
 export const LETTERS: Choice[] = ['A', 'B', 'C', 'D'];
@@ -219,6 +219,41 @@ export function AgentThinkingWall({
   );
 }
 
+/** The commentator's breakdown as a quiet pundit "lower-third" (§S5.2): a header
+ *  row (🎙️ chip + THE COMMENTATOR label) over the streaming verdict, sitting
+ *  inside the results narrative rather than shouting as a full-width billboard.
+ *  Renders nothing until text arrives. */
+export function CommentaryCard({
+  text,
+  done,
+  size = 'base',
+}: {
+  text: string;
+  done: boolean;
+  size?: 'sm' | 'base';
+}) {
+  if (!text) return null;
+  return (
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span
+          className="grid h-8 w-8 place-items-center rounded-full bg-neutral-800 text-base"
+          aria-hidden
+        >
+          🎙️
+        </span>
+        <span className="text-xs tracking-[0.2em] text-ably uppercase">The Commentator</span>
+      </div>
+      <p
+        className={`${size === 'sm' ? 'text-sm' : 'text-base'} leading-relaxed text-neutral-200`}
+      >
+        {text}
+        {!done && <span className="ml-0.5 animate-pulse">▍</span>}
+      </p>
+    </div>
+  );
+}
+
 /** Persistent Humans ⚡ Agents tug-of-war bar (§B2.10). */
 export function TugOfWar({ scoreboard }: { scoreboard: Record<string, ScoreboardEntry> }) {
   const totals = { human: 0, agent: 0 };
@@ -375,9 +410,13 @@ export function Scoreboard({
 export function Podium({
   scoreboard,
   agents = [],
+  interlude,
 }: {
   scoreboard: Record<string, ScoreboardEntry>;
   agents?: AgentRosterEntry[];
+  /** Optional content between the podium stage and the runners-up (§S5.2) —
+   *  e.g. the commentator's lower-third, so the result reads before the detail. */
+  interlude?: ReactNode;
 }) {
   const ranked = Object.entries(scoreboard)
     .map(([clientId, e]) => ({ clientId, ...e }))
@@ -434,6 +473,8 @@ export function Podium({
         )}
       </div>
 
+      {interlude}
+
       {ranked.length > 3 && (
         <div>
           <h3 className="mb-2 text-center text-sm tracking-widest text-neutral-500 uppercase">
@@ -448,10 +489,75 @@ export function Podium({
   );
 }
 
-/** The geeky "by the way…" panel (§S5.1): the same answers scored under every
- *  algorithm. Collapsed by default; opening it reveals who'd have won under each
- *  rule, so a different winner under, say, `fastest-finger` is the fun reveal.
- *  Pure recompute — the payload arrives on the main channel at analysis. */
+/** Compact podium for the player's phone (§S5.2): a "🏆 Silicon/Carbon takes it"
+ *  subtitle, then the top three as small medal columns (visual silver-gold-bronze,
+ *  gold slightly raised), the viewer's own column ringed + tagged "you". Renders
+ *  what exists when there are fewer than three; null when the board is empty. */
+export function MiniPodium({
+  scoreboard,
+  agents = [],
+  highlightId,
+}: {
+  scoreboard: Record<string, ScoreboardEntry>;
+  agents?: AgentRosterEntry[];
+  /** The viewer's own clientId — that column is highlighted as "you". */
+  highlightId?: string;
+}) {
+  const ranked = Object.entries(scoreboard)
+    .map(([clientId, e]) => ({ clientId, ...e }))
+    .sort((a, b) => b.score - a.score);
+  if (ranked.length === 0) return null;
+  const [gold, silver, bronze] = ranked;
+  // Visual order mirrors Podium: silver left, gold centre (raised), bronze right.
+  const columns = [
+    { entry: silver, medal: '🥈', delay: '0.15s', lift: '' },
+    { entry: gold, medal: '🥇', delay: '0s', lift: 'mb-3' },
+    { entry: bronze, medal: '🥉', delay: '0.3s', lift: '' },
+  ];
+  const subtitle = gold!.kind === 'agent' ? '🏆 Silicon takes it' : '🏆 Carbon takes it';
+
+  return (
+    <div className="space-y-3">
+      <p className="text-center text-sm font-semibold text-neutral-300">{subtitle}</p>
+      <div className="flex items-end justify-center gap-2">
+        {columns.map((col, i) =>
+          col.entry ? (
+            <div
+              key={i}
+              className={`flex flex-1 flex-col items-center rounded-xl px-2 py-3 ${col.lift} ${
+                col.entry.clientId === highlightId
+                  ? 'bg-ably/10 ring-1 ring-ably/40'
+                  : 'bg-neutral-900/50'
+              }`}
+              style={{ animation: `podium-rise 0.5s ease-out ${col.delay} both` }}
+            >
+              <div className="text-2xl">{col.medal}</div>
+              <div className="mt-0.5 text-lg" aria-hidden>
+                {identityEmoji(col.entry.clientId, agents)}
+              </div>
+              <div className="mt-0.5 w-full truncate text-center text-xs font-medium">
+                {col.entry.name}
+              </div>
+              <div className="text-sm font-bold tabular-nums">{col.entry.score}</div>
+              {col.entry.clientId === highlightId && (
+                <span className="mt-1 rounded bg-ably/20 px-1.5 text-[0.6rem] font-semibold text-ably">
+                  you
+                </span>
+              )}
+            </div>
+          ) : (
+            <div key={i} className="flex-1" />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** "What if we'd scored differently?" (§S5.1): the same answers re-scored under
+ *  every algorithm — a fun aside, not a scoring control. Collapsed by default;
+ *  opening it shows who'd have topped each rule, so a different winner under, say,
+ *  `fastest-finger` is the reveal. Pure recompute — payload arrives at analysis. */
 export function CounterfactualPanel({
   payload,
   agents = [],
@@ -467,6 +573,7 @@ export function CounterfactualPanel({
 
   const winnerOf = (id: string) => algos.find((a) => a.id === id)?.top[0];
   const activeWinner = winnerOf(payload.activeAlgoId);
+  const activeLabel = algos.find((a) => a.id === payload.activeAlgoId)?.label ?? 'the live rule';
   // The hook: how many algorithms would crown someone other than the live winner.
   const upsets = activeWinner
     ? algos.filter((a) => a.id !== payload.activeAlgoId && a.top[0]?.clientId !== activeWinner.clientId)
@@ -483,11 +590,11 @@ export function CounterfactualPanel({
           📊
         </span>
         <span className="flex-1">
-          <span className="font-semibold">by the way…</span>{' '}
+          <span className="font-semibold">What if we&apos;d scored differently?</span>{' '}
           <span className="text-sm text-neutral-400">
             {upsets.length > 0
-              ? `${upsets.length} scoring rule${upsets.length === 1 ? '' : 's'} would crown a different winner`
-              : 'the same answers under every scoring rule'}
+              ? `${upsets.length} other rule${upsets.length === 1 ? '' : 's'} would crown a different winner`
+              : 'every scoring rule agrees on the winner'}
           </span>
         </span>
         <span className="text-neutral-500" aria-hidden>
@@ -497,6 +604,10 @@ export function CounterfactualPanel({
 
       {open && (
         <ul className="space-y-2 border-t border-neutral-800 px-5 py-4">
+          <li className="px-1 pb-1 text-xs text-neutral-500">
+            This quiz was scored with <span className="text-neutral-300">{activeLabel}</span>. Same
+            answers, every rule — here&apos;s who&apos;d have topped each:
+          </li>
           {algos.map((a) => {
             const winner = a.top[0]!;
             const active = a.id === payload.activeAlgoId;

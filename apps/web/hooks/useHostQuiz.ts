@@ -355,6 +355,14 @@ export function useHostQuiz(
     return () => clearTimeout(timer);
   }, [state.phase, quiz, controls]);
 
+  // Auto-advance podium → analysis so the AI commentary streams on its own, no
+  // separate host click (§S5.2). A beat first, so the podium/confetti lands.
+  useEffect(() => {
+    if (state.phase !== 'podium') return;
+    const timer = setTimeout(() => void controls.analysis(), 3000);
+    return () => clearTimeout(timer);
+  }, [state.phase, controls]);
+
   return {
     state,
     correct,

@@ -1,5 +1,5 @@
 // POST /api/commentator — the analysis-phase AI commentator (§B2.9). Streams a
-// witty ~150-word breakdown of the results token-by-token onto /screen (the
+// witty ~80-word breakdown of the results token-by-token onto /screen (the
 // visible streaming showcase). Fable's model, a commentary prompt, no answer
 // duty. Fire-and-forget from the host when the quiz enters `analysis`.
 
@@ -37,7 +37,7 @@ function buildPrompt(b: Required<Omit<Body, 'quizId'>>): string {
   return `Here are the final results of a ${b.questionCount}-question quiz.\n\nFinal standings:\n${board}\n\nTeam totals — Humans ${b.humanTotal}, Agents ${b.agentTotal} (${verdict}).\n\nGive the breakdown.`;
 }
 
-const SYSTEM = `You are the live commentator for "Carbon vs Silicon", an Ably company quiz where humans battle AI agents head-to-head. Deliver a witty, punchy ~150-word breakdown of how it all went: call the human-vs-AI battle, praise or roast the top and bottom of the table by name, and land the verdict. Sports-commentary energy — confident, a little cheeky, quick. Plain prose only, no lists or headings. Do not exceed ~150 words.`;
+const SYSTEM = `You are the live commentator for "Carbon vs Silicon", an Ably company quiz where humans battle AI agents head-to-head. Deliver a witty, punchy ~80-word breakdown (3–4 sentences) of how it all went: call the human-vs-AI battle, praise or roast the top and bottom of the table by name, and land the verdict. Sports-commentary energy — confident, a little cheeky, quick. Plain prose only, no lists or headings. Do not exceed ~80 words.`;
 
 export async function POST(req: Request): Promise<Response> {
   let body: Body;

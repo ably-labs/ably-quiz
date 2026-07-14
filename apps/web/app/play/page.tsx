@@ -5,16 +5,20 @@ import { answersChannel, type Choice } from '@ably-quiz/core';
 import { useEffect, useMemo, useState } from 'react';
 import {
   AnswerButtons,
+  CommentaryCard,
   Countdown,
   CounterfactualPanel,
   identityEmoji,
+  MiniPodium,
   QuestionCard,
   Scoreboard,
   TallyBars,
+  TeamMark,
 } from '@/components/quiz';
 import { BrandMark } from '@/components/BrandMark';
 import { Lobby } from '@/components/Lobby';
 import { useAbly, usePresence } from '@/hooks/useAbly';
+import { useCommentary } from '@/hooks/useCommentary';
 import { useQuizId } from '@/hooks/useQuizId';
 import { useQuizState } from '@/hooks/useQuizState';
 import { getPlayerBaseId } from '@/lib/player';
@@ -40,6 +44,7 @@ export default function PlayPage() {
   const params = joined && quizId ? { quizId, role: 'player' as const, clientId: base } : null;
   const { conn, status, error } = useAbly(params);
   const view = useQuizState(conn, quizId ?? '');
+  const commentary = useCommentary(conn, quizId ?? '');
   const members = usePresence(conn, quizId ?? '', {
     name: nickname.trim() || 'Player',
     enter: joined,
@@ -54,7 +59,6 @@ export default function PlayPage() {
   const me = conn ? view.scoreboard[conn.clientId] : undefined;
   const ranking = Object.entries(view.scoreboard).sort((a, b) => b[1].score - a[1].score);
   const myRank = conn ? ranking.findIndex(([id]) => id === conn.clientId) + 1 : 0;
-  const winner = ranking[0]?.[1];
 
   function submit(choice: Choice) {
     if (!conn || !quizId || !view.question || view.phase !== 'asking') return;
@@ -72,7 +76,14 @@ export default function PlayPage() {
   if (!joined) {
     return (
       <Centered>
-        <BrandMark className="mb-6" />
+        {/* The imagery is the first thing someone sees from a shared link (§S5.2). */}
+        <div
+          className="mb-6 aspect-[16/9] w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-950 bg-cover bg-center"
+          style={{ backgroundImage: 'url(/hero.webp)' }}
+          role="img"
+          aria-label="Carbon vs Silicon — a brain arm-wrestles a microchip"
+        />
+        <BrandMark className="mb-4" />
         <p className="text-xs font-medium tracking-[0.3em] text-neutral-500 uppercase">
           join the quiz
         </p>
@@ -109,7 +120,6 @@ export default function PlayPage() {
 
   return (
     <main className="mx-auto max-w-md px-5 py-8">
-      <BrandMark className="mb-5" />
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
           {conn && (
@@ -124,7 +134,15 @@ export default function PlayPage() {
             <p className="text-lg font-bold tabular-nums">{me?.score ?? 0} pts</p>
           </div>
         </div>
-        <StatusDot status={status} />
+        <div className="flex items-center gap-3">
+          {/* Compact Carbon-vs-Silicon identity in the corner (§S5.2). */}
+          <div className="flex items-center gap-1" aria-label="Carbon vs Silicon">
+            <TeamMark team="carbon" className="h-6 w-6" />
+            <span className="text-[0.6rem] font-bold text-neutral-600">vs</span>
+            <TeamMark team="silicon" className="h-6 w-6" />
+          </div>
+          <StatusDot status={status} />
+        </div>
       </div>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
 
@@ -200,6 +218,8 @@ export default function PlayPage() {
 
       {(view.phase === 'podium' || view.phase === 'analysis' || view.phase === 'done') && (
         <div className="space-y-6">
+          {/* Result first (rank + mini podium), then the pundit's take, then the
+              long tail of standings — the narrative reads top to bottom (§S5.2). */}
           <div className="space-y-2 text-center">
             <p className="text-2xl font-bold">That&apos;s a wrap!</p>
             {myRank > 0 ? (
@@ -209,24 +229,27 @@ export default function PlayPage() {
               </p>
             ) : null}
             <p className="text-neutral-400">{me?.score ?? 0} pts</p>
-            {winner && (
-              <p className="text-sm text-neutral-500">
-                🏆 {winner.name} won —{' '}
-                {winner.kind === 'agent' ? 'Silicon takes it' : 'Carbon takes it'}.
-              </p>
-            )}
           </div>
-          <div>
-            <h3 className="mb-2 text-center text-xs tracking-widest text-neutral-500 uppercase">
-              Final standings
-            </h3>
-            <Scoreboard
-              scoreboard={view.scoreboard}
-              limit={12}
-              agents={view.config?.agents}
-              highlightId={conn?.clientId}
-            />
-          </div>
+          <MiniPodium
+            scoreboard={view.scoreboard}
+            agents={view.config?.agents}
+            highlightId={conn?.clientId}
+          />
+          <CommentaryCard text={commentary.text} done={commentary.done} size="sm" />
+          {ranking.length > 3 && (
+            <div>
+              <h3 className="mb-2 text-center text-xs tracking-widest text-neutral-500 uppercase">
+                Final standings
+              </h3>
+              <Scoreboard
+                scoreboard={view.scoreboard}
+                offset={3}
+                limit={12}
+                agents={view.config?.agents}
+                highlightId={conn?.clientId}
+              />
+            </div>
+          )}
           {view.counterfactual && (
             <CounterfactualPanel payload={view.counterfactual} agents={view.config?.agents} />
           )}
