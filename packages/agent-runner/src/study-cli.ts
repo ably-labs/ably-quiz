@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { config as loadEnv } from 'dotenv';
+import { authorizeMcp } from './mcp-oauth';
 import { streamAnswer } from './providers';
 import { loadRegistry } from './registry';
 import { ablyDocsStudy, ablyMcpStudy, type StudyContext, type StudyFn } from './study';
@@ -35,13 +36,22 @@ const MCP_STUDY_SYSTEM =
 const MCP_CONNECTOR_TOOLS = ['callTool', 'getContext'] as const;
 const DEFAULT_MCP_URL = 'https://your-mcp-server.example.com/mcp';
 
-/** Build the `research` hook when MCP creds are present; else undefined so the
- *  `ably-mcp` strategy is skipped gracefully (never a hard failure). */
-function makeResearch(): StudyContext['research'] {
-  const token = process.env.ABLY_MCP_AUTH;
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  if (!token || !anthropicKey) return undefined;
-  const url = process.env.ABLY_MCP_URL || DEFAULT_MCP_URL;
+/** The MCP connector endpoint (the `/mcp` URL). */
+function mcpEndpoint(): string {
+  return process.env.ABLY_MCP_URL || DEFAULT_MCP_URL;
+}
+/** The OAuth base origin (endpoints hang off it), derived from the MCP URL. */
+function mcpOAuthBase(): string {
+  try {
+    return new URL(mcpEndpoint()).origin;
+  } catch {
+    return new URL(DEFAULT_MCP_URL).origin;
+  }
+}
+
+/** A bound `research` hook — grounds one study call through the MCP connector. */
+function makeResearch(token: string): NonNullable<StudyContext['research']> {
+  const url = mcpEndpoint();
   return async (instruction: string) => {
     const res = await streamAnswer({
       provider: 'anthropic',
@@ -55,12 +65,42 @@ function makeResearch(): StudyContext['research'] {
   };
 }
 
+/**
+ * Obtain an MCP access token for the run. Prefers a pre-set `ABLY_MCP_AUTH`
+ * (handy for CI); otherwise runs the interactive OAuth flow — prints a link, the
+ * user signs in through Okta, we catch the loopback callback. Returns null (so
+ * the caller skips MCP study gracefully) when there's no TTY or auth fails.
+ */
+async function obtainMcpToken(): Promise<string | null> {
+  const preset = process.env.ABLY_MCP_AUTH;
+  if (preset) return preset;
+  if (!process.stdin.isTTY) {
+    console.log('  MCP study needs interactive OAuth (set ABLY_MCP_AUTH for CI) — no TTY, skipping.');
+    return null;
+  }
+  console.log('\n🔐 Authenticate with MCP so agents can study (read-only, ~1h token):');
+  try {
+    const { accessToken, expiresIn } = await authorizeMcp({
+      base: mcpOAuthBase(),
+      onAuthorizeUrl: (url) => {
+        console.log('\n   Open this link in your browser and sign in:\n');
+        console.log(`   ${url}\n`);
+        console.log('   Waiting for you to finish… (Ctrl-C to cancel)');
+      },
+    });
+    console.log(`✓ Authenticated — token valid ~${Math.round(expiresIn / 60)} min.\n`);
+    return accessToken;
+  } catch (err) {
+    console.warn(`  OAuth failed — ${err instanceof Error ? err.message : err}. Skipping MCP study.`);
+    return null;
+  }
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { agent: { type: 'string' } } });
 
   loadEnv({ path: ENV_LOCAL });
   const digest = (await readOptional(DIGEST_PATH)) ?? '';
-  const research = makeResearch();
   const { agents, errors } = await loadRegistry(AGENTS_DIR);
   for (const e of errors) console.warn(`skip ${e.slug}: ${e.error}`);
 
@@ -68,6 +108,20 @@ async function main(): Promise<void> {
   if (chosen.length === 0) {
     console.error(values.agent ? `no valid agent "${values.agent}"` : 'no valid agents found');
     process.exit(1);
+  }
+
+  // Authenticate ONCE up front, and only if an in-scope agent actually needs the
+  // MCP — the whole roster shares one token. Missing ANTHROPIC_API_KEY (the
+  // connector) or a declined/failed sign-in ⇒ ably-mcp agents skip gracefully.
+  let research: StudyContext['research'];
+  const needsMcp = chosen.some((a) => a.manifest.study === 'ably-mcp');
+  if (needsMcp) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.log('  ably-mcp study needs ANTHROPIC_API_KEY (the MCP connector) — skipping those agents.');
+    } else {
+      const token = await obtainMcpToken();
+      if (token) research = makeResearch(token);
+    }
   }
 
   let wrote = 0;
@@ -82,12 +136,10 @@ async function main(): Promise<void> {
       console.warn(`${a.manifest.slug}: unknown study strategy "${name}" — skipped`);
       continue;
     }
-    // MCP study needs credentials; without them, skip (keeping the existing crib)
-    // rather than fail — matches the "missing key → skip gracefully" rule.
+    // MCP study needs an authenticated session; without one, skip (keeping the
+    // existing crib) rather than fail — matches "missing cred → skip gracefully".
     if (name === 'ably-mcp' && !research) {
-      console.log(
-        `${a.manifest.slug}: ably-mcp study skipped — no MCP creds (set ABLY_MCP_AUTH + ANTHROPIC_API_KEY)`,
-      );
+      console.log(`${a.manifest.slug}: ably-mcp study skipped — not authenticated`);
       continue;
     }
     const ctx: StudyContext = { agent: a.manifest, digest, fetchText, research };
