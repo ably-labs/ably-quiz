@@ -271,26 +271,45 @@ export default function CreatePage() {
             </label>
           ))}
         </div>
-        <label className="mt-3 flex items-center gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={streakEnabled}
-            onChange={(e) => setStreakEnabled(e.target.checked)}
-          />
-          Streak bonus (×1.1 up to ×1.5 for consecutive correct answers)
-        </label>
-        <label className="mt-2 flex items-center gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={autoReveal}
-            onChange={(e) => setAutoReveal(e.target.checked)}
-          />
-          Auto-reveal the answer once everyone&apos;s answered or time&apos;s up
-        </label>
-        <p className="mt-1 max-w-2xl text-xs text-neutral-500">
-          On (default), a question ends the moment it&apos;s decided — no waiting. Turn off to hold
-          on the locked screen and reveal manually for suspense.
-        </p>
+        <details className="group mt-4 rounded-lg border border-neutral-800 bg-neutral-900/30">
+          <summary className="flex cursor-pointer items-center justify-between px-4 py-2.5 text-sm font-medium text-neutral-400 select-none hover:text-neutral-200">
+            Advanced options
+            <span className="text-neutral-600 transition group-open:rotate-180" aria-hidden>
+              ▾
+            </span>
+          </summary>
+          <div className="space-y-3 border-t border-neutral-800 px-4 py-3">
+            <label className="flex items-start gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={streakEnabled}
+                onChange={(e) => setStreakEnabled(e.target.checked)}
+              />
+              <span>
+                Streak bonus{' '}
+                <span className="text-neutral-500">
+                  — ×1.1 up to ×1.5 for consecutive correct answers
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={autoReveal}
+                onChange={(e) => setAutoReveal(e.target.checked)}
+              />
+              <span>
+                Auto-reveal{' '}
+                <span className="text-neutral-500">
+                  — end a question the moment it&apos;s decided; off holds on the locked screen for
+                  suspense
+                </span>
+              </span>
+            </label>
+          </div>
+        </details>
       </fieldset>
 
       {available.length > 0 && (
