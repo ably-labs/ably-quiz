@@ -2,6 +2,7 @@
 
 import type { AgentRosterEntry } from '@ably-quiz/core';
 import type { ReactNode } from 'react';
+import { TeamMark } from '@/components/quiz';
 import type { Member } from '@/hooks/useAbly';
 
 /** Lobby roster: humans vs agents. Shared by /screen, /host, /play.
@@ -19,7 +20,13 @@ export function Lobby({ members, agents }: { members: Member[]; agents?: AgentRo
 
   return (
     <div className="grid grid-cols-2 gap-4">
-      <Column title="Humans" accent="text-sky-400" count={humans.length} emptyHint="waiting for players…">
+      <Column
+        title="Humans"
+        accent="text-sky-400"
+        mark="carbon"
+        count={humans.length}
+        emptyHint="waiting for players…"
+      >
         {humans.map((m) => (
           <Chip key={m.clientId}>{m.name}</Chip>
         ))}
@@ -29,6 +36,7 @@ export function Lobby({ members, agents }: { members: Member[]; agents?: AgentRo
         <Column
           title="Agents"
           accent="text-ably"
+          mark="silicon"
           count={agents.length}
           emptyHint="humans only — no agents in this quiz"
         >
@@ -43,6 +51,7 @@ export function Lobby({ members, agents }: { members: Member[]; agents?: AgentRo
         <Column
           title="Agents"
           accent="text-ably"
+          mark="silicon"
           count={members.filter((m) => m.kind === 'agent').length}
           emptyHint="no agents yet"
         >
@@ -60,20 +69,27 @@ export function Lobby({ members, agents }: { members: Member[]; agents?: AgentRo
 function Column({
   title,
   accent,
+  mark,
   count,
   emptyHint,
   children,
 }: {
   title: string;
   accent: string;
+  mark: 'carbon' | 'silicon';
   count: number;
   emptyHint: string;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className={`text-sm font-semibold tracking-wide uppercase ${accent}`}>{title}</h2>
+      <div className="mb-3 flex items-center justify-between">
+        <h2
+          className={`flex items-center gap-2 text-sm font-semibold tracking-wide uppercase ${accent}`}
+        >
+          <TeamMark team={mark} className="h-6 w-6" />
+          {title}
+        </h2>
         <span className="text-2xl font-bold tabular-nums">{count}</span>
       </div>
       {count === 0 ? (

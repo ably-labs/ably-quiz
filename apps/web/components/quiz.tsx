@@ -28,6 +28,29 @@ export function identityEmoji(clientId: string, agents: AgentRosterEntry[] = [])
   for (let i = 0; i < clientId.length; i++) h = (h * 31 + clientId.charCodeAt(i)) >>> 0;
   return HUMAN_EMOJIS[h % HUMAN_EMOJIS.length]!;
 }
+/** Small character mark for a team — Carbon (the brain) or Silicon (the chip),
+ *  derived from the hero. Used sparingly for identity continuity (rosters, the
+ *  tug-of-war) without dragging the whole scene onto every screen. Size via
+ *  className. Background-image (not <img>) so a missing asset just shows the
+ *  dark chip, never a broken glyph. */
+export function TeamMark({
+  team,
+  className = '',
+}: {
+  team: 'carbon' | 'silicon';
+  className?: string;
+}) {
+  const src = team === 'carbon' ? '/team-carbon.webp' : '/team-silicon.webp';
+  return (
+    <span
+      className={`inline-block shrink-0 rounded-full border border-neutral-700 bg-neutral-950 bg-cover bg-center ${className}`}
+      style={{ backgroundImage: `url(${src})` }}
+      role="img"
+      aria-label={team === 'carbon' ? 'Carbon — the humans' : 'Silicon — the agents'}
+    />
+  );
+}
+
 // Functional answer colours (distinct + always paired with the letter, so never
 // colour-alone). The brand's single orange accent lives in the chrome (§B2.10).
 const OPTION_TINT: Record<Choice, string> = {
@@ -185,8 +208,14 @@ export function TugOfWar({ scoreboard }: { scoreboard: Record<string, Scoreboard
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm font-semibold">
-        <span className="text-sky-400">Humans {totals.human}</span>
-        <span className="text-ably">{totals.agent} Agents</span>
+        <span className="flex items-center gap-1.5 text-sky-400">
+          <TeamMark team="carbon" className="h-5 w-5" />
+          Humans {totals.human}
+        </span>
+        <span className="flex items-center gap-1.5 text-ably">
+          {totals.agent} Agents
+          <TeamMark team="silicon" className="h-5 w-5" />
+        </span>
       </div>
       <div className="flex h-4 overflow-hidden rounded-full">
         <div

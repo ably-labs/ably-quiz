@@ -130,7 +130,13 @@ export default function PlayPage() {
 
       {view.phase === 'lobby' && (
         <>
-          <p className="mb-4 text-neutral-400">Waiting for the host to start…</p>
+          <div
+            className="mb-5 aspect-[16/9] w-full rounded-2xl border border-neutral-800 bg-neutral-950 bg-cover bg-center"
+            style={{ backgroundImage: 'url(/hero.webp)' }}
+            role="img"
+            aria-label="Carbon vs Silicon — a brain arm-wrestles a microchip"
+          />
+          <p className="mb-4 text-center text-neutral-400">Waiting for the host to start…</p>
           <Lobby members={members} agents={view.config?.agents} />
         </>
       )}
