@@ -1,72 +1,36 @@
 # Matt Terra — crib
 
-Richer Ably knowledge for the quiz — a synthesized study sheet that goes beyond
-the shared digest. This committed copy is the public-safe baseline; running
-`pnpm agents:study` (strategy `ably-mcp`) regenerates it against the read-only
-MCP MCP when credentials are present. Injected into the system prompt
-alongside the shared digest.
+Pre-learned by `agents:study` (strategy `ably-mcp`): Ably knowledge researched
+through the read-only MCP MCP and synthesized into quiz-ready notes. Injected
+into the system prompt alongside the shared digest. Public-safe knowledge only.
 
-## What Ably is
+## The Six Products
+- **Pub/Sub** (GA) — WebSocket publish/subscribe messaging at global scale. Solves building realtime infra yourself. Standout: guaranteed ordering from any single publisher; exactly-once via idempotent publishing; protocol adapters for MQTT/SSE/HTTP + Pusher/PubNub.
+- **AI Transport** (GA, `@ably/ai-transport` v0.2.0) — the "session layer" for AI apps; Ably's take on the **Durable Sessions** category (vs Temporal's Durable Execution). Solves brittle HTTP/SSE streaming that dies on tab reload, device switch, or proxy timeout. Standout: resumable token streaming, multi-device continuity, human↔AI handover. v0.2.0 renamed transport/turn → **session/run**.
+- **Chat** (GA, `@ably/chat` v1.4.0) — purpose-built chat backend. Solves ordering, moderation, typing/presence at scale. Standout: AI moderation (Hive, Bodyguard, Tisane, Azure) + open-source React UI Kit.
+- **Spaces** (GA, `@ably/spaces` v0.5.2, JS/React only) — collaborative multiplayer components: avatar stacks, live cursors, member locations, component locking.
+- **LiveSync** (GA) — streams DB changes to frontends via managed **Postgres** (outbox pattern) & **MongoDB** (change streams) connectors. Exactly-once, in-order per channel.
+- **LiveObjects** (GA in JS; Experimental Swift/Java) — conflict-free, eventually-consistent shared mutable state, **Ably-arbitrated** (not peer-to-peer). Ably avoids the term "CRDT."
 
-- Ably is realtime experience infrastructure: a globally-distributed pub/sub
-  messaging platform that moves live data between clients and servers at low
-  latency, with delivery and ordering guarantees.
-- Everything is built on one core primitive: named **channels** you publish to
-  and subscribe to, carried over a persistent **connection**.
+## Core Realtime Concepts
+- **Channels**: hierarchical topic routing, namespaces via **colon separator**; 200 channels per connection.
+- **Presence**: enter/leave/update with custom data; auto-cleanup on ungraceful disconnect. 200 members standard; up to 20K with server-side batching.
+- **History & Rewind**: ephemeral in-memory = **2 min**; persisted = 24h (Free/Standard) to 72h (Pro/Ent), extendable to **365 days**; last-message persistence = **1 year**. `rewind` hydrates on attach.
+- **Connection state recovery**: server-side state kept **2 minutes**; 15-sec retry interval; transport fallback WebSocket → HTTP streaming → HTTP polling.
+- **Ordering**: guaranteed from any single publisher.
+- **Auth**: **Basic (API key)** = server-side only; **Token/JWT** = recommended for clients. **Capabilities** = per-channel permissions (subscribe, publish, presence, history, etc.).
 
-## The products
+## What Makes Ably Distinctive
+- Global edge network: **700+ PoPs**, **11 AWS regions**, 99 countries; ~20M peak concurrent connections.
+- **Four Pillars of Dependability**:
+  - **Performance** — 6.5ms message delivery latency; <65ms p99 from PoPs; <99ms global mean.
+  - **Integrity** — exactly-once delivery, guaranteed ordering, idempotent publishing.
+  - **Reliability** — **99.999999% (8×9s)** message survivability; **10×9s** for long-term storage; 8-second failover.
+  - **Availability** — **99.999% commercial SLA**; 99.9999% design target; **100% actual uptime 7+ years**; 50% capacity margin.
 
-- **Pub/Sub** — the foundational product: channels, presence, history and
-  message delivery. The primitive every other product builds on.
-- **Chat** — purpose-built chat: rooms, messages, reactions, typing indicators,
-  online/presence, occupancy and moderation hooks. Ships a React UI Kit.
-- **Spaces** — collaborative "multiplayer" UI building blocks: member presence
-  and location, live cursors, and component locking (think Figma-style
-  collaboration).
-- **LiveObjects** — realtime shared state via conflict-free replicated data
-  types: **LiveMap** (keyed values) and **LiveCounter** (numeric), synchronized
-  across every client on a channel. (This quiz's own tallies + scoreboard run on
-  LiveObjects.)
-- **LiveSync** — streams changes from your database out to application clients at
-  scale (change-data-capture → realtime fan-out).
-- **AI Transport (AIT)** — durable session infrastructure for AI apps: model
-  streams survive reconnects, a session spans multiple devices, and any
-  participant can signal any other through the same session. It fixes what raw
-  HTTP streaming breaks in production: resume, multi-device, and bidirectional
-  control.
-
-## Core realtime concepts
-
-- **Channels** organize traffic; **namespaces** (channel rules) set per-channel
-  behaviour like message persistence and server-side batching.
-- **Presence** — enter / update / leave / subscribe to know who's on a channel;
-  **occupancy** gives aggregate counts (connections, subscribers).
-- **History** retrieves past messages on a channel; **rewind** replays the last N
-  (or a recent time window) at the moment a client attaches.
-- **Connection state recovery** resumes a briefly-dropped connection and replays
-  missed messages; the `resumed` flag signals continuity was preserved.
-- **Messages** carry a `name`, `data`, `clientId` and a server `timestamp`;
-  ordering is preserved per channel.
-- **Auth** — **basic** auth (an API key, server-side only) or **token** auth
-  (Ably tokens, JWTs, or token requests) so the key never reaches the client.
-  **Capabilities** scope exactly what a token may do, per channel.
-
-## What makes Ably distinctive
-
-- A global edge network of datacentres with automatic routing and regional
-  failover, engineered around the four pillars of dependability: **performance**,
-  **integrity** (ordering + exactly-once delivery via idempotency), **reliability**
-  (guaranteed delivery), and **availability**.
-- Contractual uptime SLAs and elastic scale to millions of concurrent
-  connections on a single channel/app.
-
-## Quiz-handy specifics
-
-- LiveObjects data types are **LiveMap** and **LiveCounter**.
-- Billing is message-based, and "what counts as a message" spans every product —
-  Pub/Sub, Chat, LiveObjects, Spaces and LiveSync.
-- Server-side **batching** on a namespace coalesces a burst of publishes into
-  fewer delivered messages (this quiz uses it on its answers channel).
-- Integrations come in two directions: **inbound** (external services → Ably
-  channels) and **outbound streaming** (Ably → external systems such as Kafka,
-  webhooks and serverless functions).
+## Quotable Specifics
+- **LiveObjects types**: **LiveMap** (key/value, nestable) + **LiveCounter** (increment/decrement). Map ops = **last-write-wins**. Retention 24h–90d (default 90). Aggregate object size per channel = **6.5 MB**. Inband object cap = 64 KB.
+- **Message**: name, data, ID, timestamp, extras. Default size **64 KiB** (256 KiB Pro/Enterprise). Batch publish: up to **100 channels / 1000 messages / 2 MiB**.
+- **Channel throughput**: 200 msgs/sec, 13 MiB/sec per channel; 50/sec publish rate limit.
+- **Free tier limits**: 6M messages/month, 200 concurrent connections, 200 channels.
+- **Deprecations**: Protocol v1 fully deprecated **Nov 1, 2025**; TLS 1.0/1.1 dropped June 2025 (TLS 1.2+ required).

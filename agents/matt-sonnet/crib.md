@@ -1,72 +1,38 @@
 # Matt Sonnet — crib
 
-Richer Ably knowledge for the quiz — a synthesized study sheet that goes beyond
-the shared digest. This committed copy is the public-safe baseline; running
-`pnpm agents:study` (strategy `ably-mcp`) regenerates it against the read-only
-MCP MCP when credentials are present. Injected into the system prompt
-alongside the shared digest.
+Pre-learned by `agents:study` (strategy `ably-mcp`): Ably knowledge researched
+through the read-only MCP MCP and synthesized into quiz-ready notes. Injected
+into the system prompt alongside the shared digest. Public-safe knowledge only.
 
-## What Ably is
+## The Six Products
+- **Pub/Sub** (GA, `ably` v2.22.1): Core WebSocket pub/sub messaging at global scale. Solves building realtime infra yourself. Standouts: guaranteed ordering from any single publisher; exactly-once via idempotent publishing; protocol adapters for Pusher & PubNub.
+- **AI Transport** (GA, `@ably/ai-transport` v0.2.0): The "session layer" for AI products — category is **Durable Sessions** (vs Temporal's Durable Execution). Solves brittle HTTP/SSE streaming that dies on tab reloads, proxies, device switches. Standouts: resumable token streaming, multi-device continuity, human-AI handover. v0.2.0 renamed transport/turn → **session/run**.
+- **Chat** (GA, `@ably/chat` v1.4.0): Purpose-built chat backend. Solves ordering/moderation/presence at scale. Standouts: AI moderation (Hive, Bodyguard, Tisane, Azure); open-source React UI Kit; 365-day history (Pro/Ent).
+- **Spaces** (GA, `@ably/spaces` v0.5.2, JS/React only): Collaborative components. Standouts: avatar stacks, live cursors (25ms default batch), member locations, component locking.
+- **LiveSync** (GA): Database-to-frontend sync via managed **Postgres** (outbox + LISTEN/NOTIFY) and **MongoDB** (Change Streams) connectors. Exactly-once, in-order per channel; optimistic updates with rollback.
+- **LiveObjects** (GA in JS; Experimental Swift/Java): Conflict-free, eventually consistent shared mutable state, **Ably-arbitrated (not peer-to-peer)** — Ably docs avoid "CRDT."
 
-- Ably is realtime experience infrastructure: a globally-distributed pub/sub
-  messaging platform that moves live data between clients and servers at low
-  latency, with delivery and ordering guarantees.
-- Everything is built on one core primitive: named **channels** you publish to
-  and subscribe to, carried over a persistent **connection**.
+## Core Realtime Concepts
+- **Channels:** hierarchical topic routing; **namespaces** use a colon separator; **200 channels per connection** (all tiers).
+- **Presence:** enter/update/leave with custom data; removed after server-side timeout; up to 200 members (20K with server-side batching).
+- **History & Rewind:** `rewind` hydrates on attach with N seconds/messages. Ephemeral in-memory = **2 min**; persisted 24–72h (extendable to 365 days); last-message persistence = **1 year**.
+- **Connection state recovery:** server preserves state **2 minutes**; 15-second retry; exponential backoff; recovery key resumes across instances.
+- **Message ordering:** guaranteed from a single publisher; exactly-once via idempotent publishing (2 min, extends to 72h with persisted history).
+- **Auth:** Basic (API key, server-side only) vs Token/JWT (short-lived, recommended for clients). JWT carries `x-ably-clientId` + `x-ably-capability`.
+- **Capabilities:** `subscribe`, `publish`, `presence`, `history`, `push-subscribe`, `push-admin`, `channel-metadata`, `object-publish/subscribe`, `annotation-publish/subscribe`.
 
-## The products
+## What Makes Ably Distinctive
+- **Edge network:** 700+ PoPs, 11 AWS regions, 99 countries; 20M peak concurrent connections; 700B+ messages/month.
+- **Four Pillars of Dependability:**
+  - **Performance:** 6.5ms message delivery latency; <65ms p99 from PoPs; <99ms global mean.
+  - **Integrity:** exactly-once delivery, guaranteed ordering, idempotent publishing.
+  - **Reliability:** **99.999999% (8×9s)** message survivability (10×9s long-term storage); 8-second failover.
+  - **Availability:** **99.999% (5×9s)** commercial SLA; 99.9999% design target; 100% actual for 7+ years; 50% capacity margin.
+- Compliance: SOC2 Type II, HIPAA, AES-256 channel encryption.
 
-- **Pub/Sub** — the foundational product: channels, presence, history and
-  message delivery. The primitive every other product builds on.
-- **Chat** — purpose-built chat: rooms, messages, reactions, typing indicators,
-  online/presence, occupancy and moderation hooks. Ships a React UI Kit.
-- **Spaces** — collaborative "multiplayer" UI building blocks: member presence
-  and location, live cursors, and component locking (think Figma-style
-  collaboration).
-- **LiveObjects** — realtime shared state via conflict-free replicated data
-  types: **LiveMap** (keyed values) and **LiveCounter** (numeric), synchronized
-  across every client on a channel. (This quiz's own tallies + scoreboard run on
-  LiveObjects.)
-- **LiveSync** — streams changes from your database out to application clients at
-  scale (change-data-capture → realtime fan-out).
-- **AI Transport (AIT)** — durable session infrastructure for AI apps: model
-  streams survive reconnects, a session spans multiple devices, and any
-  participant can signal any other through the same session. It fixes what raw
-  HTTP streaming breaks in production: resume, multi-device, and bidirectional
-  control.
-
-## Core realtime concepts
-
-- **Channels** organize traffic; **namespaces** (channel rules) set per-channel
-  behaviour like message persistence and server-side batching.
-- **Presence** — enter / update / leave / subscribe to know who's on a channel;
-  **occupancy** gives aggregate counts (connections, subscribers).
-- **History** retrieves past messages on a channel; **rewind** replays the last N
-  (or a recent time window) at the moment a client attaches.
-- **Connection state recovery** resumes a briefly-dropped connection and replays
-  missed messages; the `resumed` flag signals continuity was preserved.
-- **Messages** carry a `name`, `data`, `clientId` and a server `timestamp`;
-  ordering is preserved per channel.
-- **Auth** — **basic** auth (an API key, server-side only) or **token** auth
-  (Ably tokens, JWTs, or token requests) so the key never reaches the client.
-  **Capabilities** scope exactly what a token may do, per channel.
-
-## What makes Ably distinctive
-
-- A global edge network of datacentres with automatic routing and regional
-  failover, engineered around the four pillars of dependability: **performance**,
-  **integrity** (ordering + exactly-once delivery via idempotency), **reliability**
-  (guaranteed delivery), and **availability**.
-- Contractual uptime SLAs and elastic scale to millions of concurrent
-  connections on a single channel/app.
-
-## Quiz-handy specifics
-
-- LiveObjects data types are **LiveMap** and **LiveCounter**.
-- Billing is message-based, and "what counts as a message" spans every product —
-  Pub/Sub, Chat, LiveObjects, Spaces and LiveSync.
-- Server-side **batching** on a namespace coalesces a burst of publishes into
-  fewer delivered messages (this quiz uses it on its answers channel).
-- Integrations come in two directions: **inbound** (external services → Ably
-  channels) and **outbound streaming** (Ably → external systems such as Kafka,
-  webhooks and serverless functions).
+## Quotable Specifics
+- **LiveObjects types:** **LiveMap** (key/value, nestable) and **LiveCounter** (increment/decrement). Map ops = last-write-wins. Retention 24h–90d (default 90d); **6.5 MB** aggregate object size per channel; inband objects capped at 64 KB.
+- **What's a message:** data packet with name, data, ID, timestamp, extras. **64 KiB** default size (256 KiB Pro/Enterprise).
+- **Channel rules (namespaces):** persist last message, persist all messages, push enabled, server-side batching, message conflation, mutable messages.
+- **Throughput limits:** 200 messages/sec & 13 MiB/sec per channel; 50/sec publish rate; batch publish to **100 channels / 1000 messages** per request.
+- **Protocol v1** fully deprecated **November 1, 2025**; **TLS 1.2+** required since June 2025.
