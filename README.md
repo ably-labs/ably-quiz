@@ -42,11 +42,11 @@ land in `/host`. Project `/screen` on the big screen; players scan the QR to `/p
 
 Which keys unlock what (missing keys are skipped gracefully — a quiz still runs):
 
-| Key                  | Unlocks                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| `ABLY_API_KEY`       | **Everything realtime.** A humans-only quiz runs with just this key.                |
+| Key                  | Unlocks                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `ABLY_API_KEY`       | **Everything realtime.** A humans-only quiz runs with just this key.                                                |
 | `AI_GATEWAY_API_KEY` | The **AI agents** — every provider answers through one [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) key. |
-| `ANTHROPIC_API_KEY`  | **Grounded** Anthropic turns (the MCP MCP connector) and `pnpm agents:study`.   |
+| `ANTHROPIC_API_KEY`  | **Grounded** Anthropic turns (the MCP MCP connector) and `pnpm agents:study`.                                   |
 
 There is **no host secret** — an unguessable quiz id plus Ably's own capability
 matrix are the blast-radius control for this demo.
@@ -88,11 +88,11 @@ PR-your-own-agent flow.
 Ably _is_ the backend — no database, no ORM, no server state store. Three channel
 roles, each in its own namespace so they can carry different channel rules:
 
-| Channel                  | Role                                                | Notes                                       |
-| ------------------------ | --------------------------------------------------- | ------------------------------------------- |
-| `quiz:{id}`              | control events, lobby presence, LiveObjects root    | persisted; batching off (control undelayed) |
+| Channel                  | Role                                                                | Notes                                       |
+| ------------------------ | ------------------------------------------------------------------- | ------------------------------------------- |
+| `quiz:{id}`              | control events, lobby presence, LiveObjects root                    | persisted; batching off (control undelayed) |
 | `quiz-answers:{id}`      | fan-in answers — everyone publishes, only the quizmaster subscribes | persisted; server-side batching (200 ms)    |
-| `quiz-agent:{id}:{slug}` | one agent's live think-aloud + quip (AI Transport)  | persisted; message appends enabled          |
+| `quiz-agent:{id}:{slug}` | one agent's live think-aloud + quip (AI Transport)                  | persisted; message appends enabled          |
 
 **LiveObjects** (a root map + counters) holds the live tallies and scoreboard;
 channel **history** is the durable audit log, which is what makes recovery and the
@@ -122,15 +122,15 @@ The gate — clean before **every** commit (CI runs the same):
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
-| Script                  | What it does                                          |
-| ----------------------- | ----------------------------------------------------- |
-| `pnpm dev`              | build the agent index, then run the web app           |
-| `pnpm build`            | production build of the web app                       |
-| `pnpm lint` · `typecheck` · `test` | the quality gate (ESLint · `tsc --noEmit` · Vitest) |
-| `pnpm agents:study`     | (re)generate agent cribs via the read-only MCP (interactive OAuth) |
-| `pnpm agent:new <slug>` | scaffold a new agent                                  |
-| `pnpm agent:test <slug>`| dry-run an agent against fixture questions             |
-| `pnpm agents:build`     | regenerate the static agent-module index for the web app |
+| Script                             | What it does                                                       |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `pnpm dev`                         | build the agent index, then run the web app                        |
+| `pnpm build`                       | production build of the web app                                    |
+| `pnpm lint` · `typecheck` · `test` | the quality gate (ESLint · `tsc --noEmit` · Vitest)                |
+| `pnpm agents:study`                | (re)generate agent cribs via the read-only MCP (interactive OAuth) |
+| `pnpm agent:new <slug>`            | scaffold a new agent                                               |
+| `pnpm agent:test <slug>`           | dry-run an agent against fixture questions                         |
+| `pnpm agents:build`                | regenerate the static agent-module index for the web app           |
 
 ## Docs
 

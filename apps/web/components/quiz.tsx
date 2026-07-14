@@ -16,8 +16,22 @@ export const LETTERS: Choice[] = ['A', 'B', 'C', 'D'];
 // stable, friendly one derived from their clientId (so it's consistent all game
 // without anyone choosing). Keeps identity visual + reduces reliance on badges.
 const HUMAN_EMOJIS = [
-  '🦊', '🐼', '🦁', '🐙', '🦉', '🐝', '🦄', '🐢',
-  '🦈', '🐸', '🐵', '🦩', '🐺', '🦥', '🐬', '🦔',
+  '🦊',
+  '🐼',
+  '🦁',
+  '🐙',
+  '🦉',
+  '🐝',
+  '🦄',
+  '🐢',
+  '🦈',
+  '🐸',
+  '🐵',
+  '🦩',
+  '🐺',
+  '🦥',
+  '🐬',
+  '🦔',
 ];
 export function identityEmoji(clientId: string, agents: AgentRosterEntry[] = []): string {
   if (clientId.startsWith('a:')) {
@@ -279,9 +293,7 @@ export function CommentaryCard({
         </span>
         <span className="text-xs tracking-[0.2em] text-ably uppercase">The Commentator</span>
       </div>
-      <p
-        className={`${size === 'sm' ? 'text-sm' : 'text-base'} leading-relaxed text-neutral-200`}
-      >
+      <p className={`${size === 'sm' ? 'text-sm' : 'text-base'} leading-relaxed text-neutral-200`}>
         {text}
         {!done && <span className="ml-0.5 animate-pulse">▍</span>}
       </p>
@@ -327,8 +339,7 @@ export function QuizProgress({ current, total }: { current: number; total: numbe
       <div className="flex flex-1 gap-1.5" aria-hidden>
         {Array.from({ length: total }, (_, i) => {
           const n = i + 1;
-          const cls =
-            n < current ? 'bg-ably' : n === current ? 'bg-ably/60' : 'bg-neutral-800';
+          const cls = n < current ? 'bg-ably' : n === current ? 'bg-ably/60' : 'bg-neutral-800';
           return <div key={i} className={`h-1.5 flex-1 rounded-full ${cls}`} />;
         })}
       </div>
@@ -611,7 +622,9 @@ export function CounterfactualPanel({
   const activeLabel = algos.find((a) => a.id === payload.activeAlgoId)?.label ?? 'the live rule';
   // The hook: how many algorithms would crown someone other than the live winner.
   const upsets = activeWinner
-    ? algos.filter((a) => a.id !== payload.activeAlgoId && a.top[0]?.clientId !== activeWinner.clientId)
+    ? algos.filter(
+        (a) => a.id !== payload.activeAlgoId && a.top[0]?.clientId !== activeWinner.clientId,
+      )
     : [];
 
   return (
@@ -656,7 +669,11 @@ export function CounterfactualPanel({
               >
                 <span className="w-28 shrink-0">
                   <span className="block text-sm font-semibold">{a.label}</span>
-                  {active && <span className="text-[0.65rem] tracking-wide text-ably uppercase">scored live</span>}
+                  {active && (
+                    <span className="text-[0.65rem] tracking-wide text-ably uppercase">
+                      scored live
+                    </span>
+                  )}
                 </span>
                 <span className="hidden flex-1 truncate text-xs text-neutral-500 sm:block">
                   {a.blurb}
@@ -678,4 +695,3 @@ export function CounterfactualPanel({
     </section>
   );
 }
-

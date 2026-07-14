@@ -59,7 +59,9 @@ export async function POST(req: Request): Promise<Response> {
   const rest = new Ably.Rest({ key: apiKey });
   const channel = rest.channels.get(agentChannel(quizId, 'commentator'));
   const emit = (msg: CommentaryMessage) => {
-    void channel.publish({ name: 'commentary', data: msg, clientId: 'a:commentator' }).catch(() => {});
+    void channel
+      .publish({ name: 'commentary', data: msg, clientId: 'a:commentator' })
+      .catch(() => {});
   };
 
   const prompt = buildPrompt({
@@ -90,7 +92,10 @@ export async function POST(req: Request): Promise<Response> {
   } catch (err) {
     console.error('[commentator] failed:', err);
     emit({ text: full || '…', done: true });
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'failed' }, { status: 502 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'failed' },
+      { status: 502 },
+    );
   }
 
   emit({ text: full, done: true });

@@ -65,9 +65,7 @@ async function main(): Promise<void> {
 
   // Interactive only when a terminal is attached; otherwise flags must supply it.
   const interactive = Boolean(process.stdin.isTTY);
-  const rl = interactive
-    ? createInterface({ input: process.stdin, output: process.stdout })
-    : null;
+  const rl = interactive ? createInterface({ input: process.stdin, output: process.stdout }) : null;
   if (interactive) console.log(`\nScaffolding a new agent: ${slug}\n`);
 
   const resolve = async (
@@ -84,7 +82,11 @@ async function main(): Promise<void> {
   const name = await resolve(values.name, 'Display name (e.g. "Jane Opus"):', slug);
   const emoji = await resolve(values.emoji, 'Emoji:', '🤖');
   const owner = await resolve(values.owner, 'Owner (name <email>):');
-  let provider = await resolve(values.provider, `Provider (${PROVIDERS.join(' / ')}):`, 'anthropic');
+  let provider = await resolve(
+    values.provider,
+    `Provider (${PROVIDERS.join(' / ')}):`,
+    'anthropic',
+  );
   while (rl && !(PROVIDERS as readonly string[]).includes(provider)) {
     provider = await resolve(undefined, `Provider (${PROVIDERS.join(' / ')}):`, 'anthropic');
   }

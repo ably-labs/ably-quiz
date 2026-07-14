@@ -36,18 +36,25 @@ export function useAgentHealth(slugs: string[]): HealthState {
       body: JSON.stringify({ slugs }),
     })
       .then((r) => r.json())
-      .then((d: { configured?: boolean; groundingKey?: boolean; results?: AgentHealth[]; error?: string }) => {
-        if (!d.configured) {
-          setStatus('unconfigured');
-          setError(d.error);
-          setResults([]);
-          return;
-        }
-        const res = d.results ?? [];
-        setResults(res);
-        setGroundingKey(Boolean(d.groundingKey));
-        setStatus(res.every((r) => r.ok) ? 'ok' : 'issues');
-      })
+      .then(
+        (d: {
+          configured?: boolean;
+          groundingKey?: boolean;
+          results?: AgentHealth[];
+          error?: string;
+        }) => {
+          if (!d.configured) {
+            setStatus('unconfigured');
+            setError(d.error);
+            setResults([]);
+            return;
+          }
+          const res = d.results ?? [];
+          setResults(res);
+          setGroundingKey(Boolean(d.groundingKey));
+          setStatus(res.every((r) => r.ok) ? 'ok' : 'issues');
+        },
+      )
       .catch((e: unknown) => {
         setStatus('issues');
         setError(e instanceof Error ? e.message : 'health check failed');

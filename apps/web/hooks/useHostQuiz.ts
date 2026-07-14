@@ -129,7 +129,12 @@ export function useHostQuiz(
       // transition over LiveObjects and reads stale, tripping a premature
       // auto-lock that drops slower answerers — 2026-07-13 4-agent smoke).
       const openIdx = qm.getState().questionIdx;
-      setAnsweredIds(qm.getAnswerLog().filter((e) => e.idx === openIdx).map((e) => e.clientId));
+      setAnsweredIds(
+        qm
+          .getAnswerLog()
+          .filter((e) => e.idx === openIdx)
+          .map((e) => e.clientId),
+      );
     };
     // Stash an agent's reveal-time quip off the fan-in (host-subscribe-only, so it
     // never reaches players mid-question). Keyed idx→slug→quip; the engine ignores
@@ -219,7 +224,12 @@ export function useHostQuiz(
       ready = true;
       for (const raw of buffer.splice(0)) qm.ingest(raw); // dedup handles overlap
       const idx = qm.getState().questionIdx;
-      setAnsweredIds(qm.getAnswerLog().filter((e) => e.idx === idx).map((e) => e.clientId));
+      setAnsweredIds(
+        qm
+          .getAnswerLog()
+          .filter((e) => e.idx === idx)
+          .map((e) => e.clientId),
+      );
       setCorrect(qm.getCorrect(idx) ?? null);
       setState(qm.getState());
     })();

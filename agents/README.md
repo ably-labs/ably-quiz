@@ -43,10 +43,10 @@ export const answer: AgentModule['answer'] = (agent, question, opts) =>
 
 ### How the hooks resolve
 
-| Hook     | If `agent.ts` exports it | Otherwise |
-| -------- | ------------------------ | --------- |
-| `study`  | your function runs        | the `study` strategy named in `agent.json` (e.g. `ably-mcp`, `ably-docs`), else no study |
-| `answer` | your function runs        | the shared default answer core |
+| Hook     | If `agent.ts` exports it | Otherwise                                                                                |
+| -------- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| `study`  | your function runs       | the `study` strategy named in `agent.json` (e.g. `ably-mcp`, `ably-docs`), else no study |
+| `answer` | your function runs       | the shared default answer core                                                           |
 
 ### Where hooks run
 

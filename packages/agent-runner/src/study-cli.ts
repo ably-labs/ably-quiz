@@ -78,7 +78,9 @@ async function obtainMcpToken(): Promise<string | null> {
   const preset = process.env.ABLY_MCP_AUTH;
   if (preset) return preset;
   if (!process.stdin.isTTY) {
-    console.log('  MCP study needs interactive OAuth (set ABLY_MCP_AUTH for CI) — no TTY, skipping.');
+    console.log(
+      '  MCP study needs interactive OAuth (set ABLY_MCP_AUTH for CI) — no TTY, skipping.',
+    );
     return null;
   }
   console.log('\n🔐 Authenticate with MCP so agents can study (read-only, ~1h token):');
@@ -94,7 +96,9 @@ async function obtainMcpToken(): Promise<string | null> {
     console.log(`✓ Authenticated — token valid ~${Math.round(expiresIn / 60)} min.\n`);
     return accessToken;
   } catch (err) {
-    console.warn(`  OAuth failed — ${err instanceof Error ? err.message : err}. Skipping MCP study.`);
+    console.warn(
+      `  OAuth failed — ${err instanceof Error ? err.message : err}. Skipping MCP study.`,
+    );
     return null;
   }
 }
@@ -131,7 +135,9 @@ async function main(): Promise<void> {
   const needsMcp = resolved.some((r) => r.study === ablyMcpStudy);
   if (needsMcp) {
     if (!process.env.ANTHROPIC_API_KEY) {
-      console.log('  ably-mcp study needs ANTHROPIC_API_KEY (the MCP connector) — skipping those agents.');
+      console.log(
+        '  ably-mcp study needs ANTHROPIC_API_KEY (the MCP connector) — skipping those agents.',
+      );
     } else {
       const token = await obtainMcpToken();
       if (token) research = makeResearch(token);

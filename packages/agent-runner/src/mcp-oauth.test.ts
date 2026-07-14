@@ -34,7 +34,8 @@ describe('discoverAuthServer', () => {
   });
 
   it('falls back to the workers-oauth-provider defaults when discovery fails', async () => {
-    const fetchImpl = (async () => new Response('nope', { status: 404 })) as unknown as typeof fetch;
+    const fetchImpl = (async () =>
+      new Response('nope', { status: 404 })) as unknown as typeof fetch;
     const eps = await discoverAuthServer(base, fetchImpl);
     expect(eps).toEqual({
       authorization_endpoint: `${base}/authorize`,

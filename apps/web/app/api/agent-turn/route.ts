@@ -77,10 +77,9 @@ export async function POST(req: Request): Promise<Response> {
   // The agent's own answer() if it ships one, else the shared default core.
   const answerFn = agent.answer ?? answerQuestion;
 
-  const digest = await readFile(
-    path.join(root, 'packages/core/src/ably-digest.md'),
-    'utf8',
-  ).catch(() => undefined);
+  const digest = await readFile(path.join(root, 'packages/core/src/ably-digest.md'), 'utf8').catch(
+    () => undefined,
+  );
 
   // Publish STATUS to the agent's own channel so /screen can show a live
   // thinking/answered/error indicator (§S4.5). Players hold read-only subscribe

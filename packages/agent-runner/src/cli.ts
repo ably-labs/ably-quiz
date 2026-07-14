@@ -21,7 +21,6 @@ const ENV_LOCAL = fileURLToPath(new URL('.env.local', REPO_ROOT));
 // The shared digest is curated at S4.3; injected when present (§B2.7 step 4).
 const DIGEST_PATH = fileURLToPath(new URL('../../core/src/ably-digest.md', import.meta.url));
 
-
 async function main(): Promise<void> {
   loadEnv({ path: ENV_LOCAL });
 

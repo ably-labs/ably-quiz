@@ -5,14 +5,16 @@ through the read-only MCP MCP and synthesized into quiz-ready notes. Injected
 into the system prompt alongside the shared digest. Public-safe knowledge only.
 
 ## Products — what / problem / standout
+
 - **Pub/Sub** (GA, `ably` v2.22.1): WebSocket publish/subscribe messaging at global scale. Solves building realtime infra yourself. Standout: guaranteed ordering per publisher; exactly-once via idempotent publishing; protocols WebSocket/MQTT/SSE/HTTP + Pusher & PubNub adapters.
-- **AI Transport** (GA, `@ably/ai-transport` v0.2.0): the *session layer* for AI products = **Durable Sessions** category (vs Temporal's Durable Execution). Solves brittle HTTP streaming, lost sessions on device switch, no human handoff. Standout: resumable token streaming; multi-device continuity; agent presence with crash detection (`idle/thinking/streaming/completed/crashed`). v0.2.0 renamed **transport/turn → session/run**. Node 22+; TypeScript.
+- **AI Transport** (GA, `@ably/ai-transport` v0.2.0): the _session layer_ for AI products = **Durable Sessions** category (vs Temporal's Durable Execution). Solves brittle HTTP streaming, lost sessions on device switch, no human handoff. Standout: resumable token streaming; multi-device continuity; agent presence with crash detection (`idle/thinking/streaming/completed/crashed`). v0.2.0 renamed **transport/turn → session/run**. Node 22+; TypeScript.
 - **Chat** (GA, `@ably/chat` v1.4.0; UI Kit v0.3.0): purpose-built chat. Standout: AI moderation (Hive, Bodyguard, Tisane, Azure Content Safety, custom); open-source React UI Kit; idempotent REST publishing + `getVersions()` (v1.4.0).
 - **Spaces** (GA, `@ably/spaces` v0.5.2, JS/React only): collaborative components — avatar stacks, live cursors, member locations, component locking. Cursor batching default **25ms**; ~100ms lock acquisition.
 - **LiveObjects** (GA in JS; Experimental Swift/Java): conflict-free, eventually consistent shared mutable state. Ably-arbitrated (not peer-to-peer); Ably avoids the term "CRDT."
 - **LiveSync** (GA): managed **Postgres** (outbox + LISTEN/NOTIFY) & **MongoDB** (Change Streams) connectors stream DB changes to frontend. Exactly-once, in-order per channel; optimistic updates via Models SDK.
 
 ## Core realtime concepts
+
 - **Channels**: hierarchical topic routing; namespaces via **colon separator**; channel rules control persistence/push/batching.
 - **Presence**: enter/leave/update with custom data; auto-cleanup on ungraceful disconnect; presence divergence ≤30s.
 - **History & rewind**: ephemeral in-memory **2 min** (all accounts); persisted 24h (Free/Standard) → 72h (Pro/Ent), extendable to **365 days**; last-message persistence **1 year**. `rewind` hydrates on attach with N seconds/messages.
@@ -22,6 +24,7 @@ into the system prompt alongside the shared digest. Public-safe knowledge only.
 - **Capabilities**: fine-grained per-channel — `subscribe`, `publish`, `presence`, `history`, `push-subscribe`, `push-admin`, `channel-metadata`, `object-subscribe/publish`, `annotation-publish/subscribe`.
 
 ## What makes Ably distinctive
+
 - **Global edge network**: 700+ PoPs, **11 AWS regions**, 99 countries; latency-based DNS routing.
 - **Four Pillars of Dependability**:
   - **Performance** — 6.5ms delivery latency; <30ms p99 in-DC; <65ms p99 from PoPs; <99ms global mean.
@@ -31,6 +34,7 @@ into the system prompt alongside the shared digest. Public-safe knowledge only.
 - Scale: 700B+ messages/month, 30B+ connections/month, 2B+ devices/month; SOC2 Type II, HIPAA, AES-256 encryption.
 
 ## Quotable specifics
+
 - **LiveObjects types**: **LiveMap** (key/value, nestable) & **LiveCounter** (increment/decrement). Map ops = **last-write-wins**. Retention 24h–90d (default 90d); **6.5 MB** aggregate per channel; inband objects capped **64 KB**.
 - **A message**: 64 KiB default (256 KiB Pro/Enterprise); has name, data, ID, timestamp, extras.
 - **Channel rules/namespaces**: persist last message / all messages, push, server-side batching, conflation, mutable messages.

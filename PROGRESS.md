@@ -120,7 +120,7 @@ inside the running app** — no separate process, no Fluid lease/heartbeat/re-tr
 - **Roster is declarative, not presence.** At create time the host sees an **agent checklist**
   (all four checked by default, uncheck to exclude); the chosen set is written into quiz config
   (LiveObjects/`StoredQuiz`). The AGENTS column reads that — an agent is "present" because it's
-  *declared*, and is always assumed ready for the next question.
+  _declared_, and is always assumed ready for the next question.
 - **Presence = a transient "thinking/working" indicator only** (optional), shown while a turn runs
   — not persistent membership. (Matt: "present for an agent in this model is really … thinking and working.")
 - **Trigger = host, in-app.** When the host broadcasts a question it POSTs `/api/agent-turn` for
@@ -133,6 +133,7 @@ inside the running app** — no separate process, no Fluid lease/heartbeat/re-tr
   is what makes this a drop-in. (See the S4.3 auto-lock fix: host gates on the per-idx answer count.)
 
 **Build status (S4.4) — Slices A + B landed & verified live (2026-07-14):**
+
 - **Slice A** (declarative roster): `GET /api/agents` lists the registry; create-time agent checklist
   (all on by default) → `config.agents` (`AgentRosterEntry[]`) flows through LiveObjects to host/screen/play.
 - **Slice B** (on-demand invocation): `POST /api/agent-turn` runs one agent's turn (persona + crib + digest
@@ -161,6 +162,7 @@ credential (a stored key is an attack surface — Matt's call; drops the BRIEF's
 though a client_credentials M2M path exists in MCP).
 
 Flow:
+
 1. Quiz **DCR-registers** once as an OAuth client of `ably-core-mcp` (public client + PKCE).
 2. Host clicks **"Authenticate agents"** → browser OAuth → **Okta SSO** → 1h access token held in the
    **quiz controller (browser session)**, never persisted server-side and **never logged**. Until then,
@@ -207,10 +209,10 @@ classified read vs write by verified tool description. **61 read-only tools**, p
 ### Build status (S6 grounding) — plumbing landed, live grounding pending Matt's Okta (2026-07-14)
 
 - **Model-side** (`9d80b98`): `lib/ably-os.ts` (Worker URL, 61-tool allowlist, connector tools = callTool
-  + getContext only, injected catalog + reads-only instructions); `providers.ts` attaches the
-  Anthropic beta MCP connector (`mcp-client-2025-11-20`) on grounded turns; `runner.ts`/`api/agent-turn`
-  thread `grounding` + `mcp`, grounding a turn only when a token is present AND the agent is Anthropic
-  (grok/gpt run ungrounded). Dormant + non-breaking until a token flows.
+  - getContext only, injected catalog + reads-only instructions); `providers.ts` attaches the
+    Anthropic beta MCP connector (`mcp-client-2025-11-20`) on grounded turns; `runner.ts`/`api/agent-turn`
+    thread `grounding` + `mcp`, grounding a turn only when a token is present AND the agent is Anthropic
+    (grok/gpt run ungrounded). Dormant + non-breaking until a token flows.
 - **Host OAuth** (`7fe9db4`): `/api/mcp/register` (discovery + DCR proxy), `/api/mcp/token` (PKCE exchange
   proxy, SSRF-guarded), `useMcpAuth` (DCR → PKCE → Okta redirect → callback → token in sessionStorage),
   `/host` "Authenticate agents" banner. Token browser-only, passed per turn, never stored/logged.
@@ -269,9 +271,9 @@ classified read vs write by verified tool description. **61 read-only tools**, p
   billing, so a single provider's quota (the OpenAI 429 that benched Matt GPT) can't sideline an agent.
   **Exception:** a grounded Anthropic turn stays direct (needs `ANTHROPIC_API_KEY`) — the MCP MCP
   connector is an Anthropic-Messages feature the gateway can't carry. Added a preflight (`/api/agent-health`
-  + host banner) and an in-run `error`-phase warning on the thinking wall so a dead key/quota is visible,
-  not silent. Live-verified: all 5 agents pass the preflight and answer through the gateway; grok's gateway
-  id is `grok-4.20-non-reasoning` (no date suffix).
+  - host banner) and an in-run `error`-phase warning on the thinking wall so a dead key/quota is visible,
+    not silent. Live-verified: all 5 agents pass the preflight and answer through the gateway; grok's gateway
+    id is `grok-4.20-non-reasoning` (no date suffix).
 
 - **S1.3 (channel naming):** answers/agent channels renamed `quiz:{id}:answers` → `quiz-answers:{id}` and `quiz:{id}:agent:{slug}` → `quiz-agent:{id}:{slug}`. Rationale: Ably namespaces match the first colon-segment only, so per-namespace rules (batching on answers, appends on agent sessions, neither on main) require distinct prefixes. Same architecture; encoded in the protocol at S2.1. See [docs/ABLY-SETUP.md](docs/ABLY-SETUP.md).
 - **S1.3 (fairness clock):** VERIFIED empirically that under real server-side batching, per-message server timestamps quantize to the batch flush (≈2 distinct timestamps across 20 simultaneous messages), NOT preserved per-message. Decision per §B2.1: accept ≤200ms quantization (uniform → fair); keep batching on `quiz-answers` (needed for the quizmaster's 50 msg/s outbound limit at scale). Tunable to 100ms or off; revisit at S3.6.
@@ -310,9 +312,8 @@ _(none — the S3-gate scale question is resolved: Matt scoped the PoC to ≤150
 
 - **`matt-gpt` joins the field (OpenAI, `gpt-5.3-chat-latest`).** Added once an `OPENAI_API_KEY` landed — one folder (`agents/matt-gpt/`) + committed crib, per the S4.3 "drops in later" design. Model chosen live from the OpenAI models API (a `*-chat-latest` non-reasoning flagship — fast, strong, and compatible with the runner's streaming `chat.completions` path); verified live end-to-end (connected, answered q0 → correct in 2.8s). **Deviation (`providers.ts`):** OpenAI's current models reject `max_tokens` and require `max_completion_tokens`, so `streamOpenAiCompatible` now branches — `max_completion_tokens` for OpenAI, `max_tokens` for xAI (grok, unchanged). Env: the real xAI key lives in `~/.provider-keys.env` (the `.env.local` value was a placeholder); the pasted `OPENAI_API_KEY` had the template's trailing `# later — Matt GPT` comment glued on — both fixed in the gitignored `.env.local`, never committed.
 
-
 - **S4.3 live 4-agent smoke — PASSED.** The full field (`matt-opus`/`sonnet`/`fable`/`grok`) ran live against real Ably end-to-end: all four join the roster, receive each question, think, answer on the humans' fan-in, and score to podium. Grounding confirmed (all four correctly answered the Ably-internal AIT question); model speed ordering matches the S0 spike (grok ~1s → fable ~6s). Run via `pnpm agents:start --quiz <id> --base http://localhost:3000` with the real xAI key sourced from `~/.provider-keys.env` into the runner env (dotenv doesn't override an already-set var, so it wins over the `.env.local` placeholder). This was S4.3's last open verification item.
-- **Auto-lock race fixed (host).** The smoke surfaced an intermittent bug: on a question transition the host auto-locked after only the *fastest* agent answered, dropping the slower three (they scored 0 that question). Root cause in `useHostQuiz`: the auto-lock "everyone answered" test read the LiveObjects scoreboard's `answered` flags, which lag a transition — 3 stale-`true` from the previous question + the fast answerer tripped `>= presentCount`. Fixed by gating on the engine's authoritative per-idx answer count (`getAnswerLog().filter(e => e.idx === openIdx)`, surfaced through `answersIn`) instead of the lag-prone flag. Regression test in `quizmaster.test.ts` locks the per-idx-isolation invariant; re-run smoke confirmed all 5 questions counted 4/4 across every transition.
+- **Auto-lock race fixed (host).** The smoke surfaced an intermittent bug: on a question transition the host auto-locked after only the _fastest_ agent answered, dropping the slower three (they scored 0 that question). Root cause in `useHostQuiz`: the auto-lock "everyone answered" test read the LiveObjects scoreboard's `answered` flags, which lag a transition — 3 stale-`true` from the previous question + the fast answerer tripped `>= presentCount`. Fixed by gating on the engine's authoritative per-idx answer count (`getAnswerLog().filter(e => e.idx === openIdx)`, surfaced through `answersIn`) instead of the lag-prone flag. Regression test in `quizmaster.test.ts` locks the per-idx-isolation invariant; re-run smoke confirmed all 5 questions counted 4/4 across every transition.
 - **Player countdown + reveal distribution (S3.3).** The player `/play` view was bare: no countdown while answering and a text-only reveal. It already received the question deadline and live tallies through `useQuizState` — now it renders them, reusing the screen's components: a server-timestamp-anchored `<Countdown>` during "asking", and a `<TallyBars>` distribution on reveal ("what everyone picked") with the correct answer marked and the player's own pick ringed + tagged "you". `TallyBars` gained an optional `picked` prop for the you-marker; `/screen` passes nothing so it's unchanged. Pure presentation over existing state; verified live against real Ably (join → wrong answer → reveal). Broader player restyle stays in the S5.2 polish pass.
 
 ## Backlog / follow-ups (from Matt, beyond the original brief)

@@ -45,7 +45,12 @@
     "band": "ably",
     "category": "Ably",
     "prompt": "What does “AIT” stand for at Ably?",
-    "options": ["Ably Internal Tooling", "Async Integration Tier", "AI Transport", "Adaptive Ingest"],
+    "options": [
+      "Ably Internal Tooling",
+      "Async Integration Tier",
+      "AI Transport",
+      "Adaptive Ingest"
+    ],
     "correct": 2
   },
   {

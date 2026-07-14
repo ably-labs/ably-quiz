@@ -38,9 +38,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const registry = await loadRegistry(await agentsDir());
-  const agents = registry.agents.filter(
-    (a) => !slugs || slugs.includes(a.manifest.slug),
-  );
+  const agents = registry.agents.filter((a) => !slugs || slugs.includes(a.manifest.slug));
 
   // Grounded turns need a direct Anthropic key; surface if it's missing so the
   // host knows grounding will silently fall back to ungrounded.
@@ -49,7 +47,12 @@ export async function POST(req: Request): Promise<Response> {
   const results = await Promise.all(
     agents.map(async (a) => {
       const error = await pingModel(a.manifest.provider, a.manifest.model);
-      return { slug: a.manifest.slug, name: a.manifest.name, ok: error === null, error: error ?? undefined };
+      return {
+        slug: a.manifest.slug,
+        name: a.manifest.name,
+        ok: error === null,
+        error: error ?? undefined,
+      };
     }),
   );
 

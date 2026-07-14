@@ -143,14 +143,19 @@ describe('ablyMcpStudy (§S6.3)', () => {
   });
 
   it('throws (so the CLI skips) when no research hook is wired', async () => {
-    await expect(
-      ablyMcpStudy({ agent, digest: '', fetchText: noFetch }),
-    ).rejects.toThrow(/MCP grounding/i);
+    await expect(ablyMcpStudy({ agent, digest: '', fetchText: noFetch })).rejects.toThrow(
+      /MCP grounding/i,
+    );
   });
 
   it('throws when research returns empty notes rather than emit a hollow crib', async () => {
     await expect(
-      ablyMcpStudy({ agent, digest: '', fetchText: noFetch, research: () => Promise.resolve('   ') }),
+      ablyMcpStudy({
+        agent,
+        digest: '',
+        fetchText: noFetch,
+        research: () => Promise.resolve('   '),
+      }),
     ).rejects.toThrow(/no notes/i);
   });
 
@@ -166,7 +171,7 @@ describe('stripStudyPreamble', () => {
   });
 
   it('falls back to the first Markdown heading when no sentinel is present', () => {
-    expect(stripStudyPreamble("Let me research.\n\n## Products\n- Pub/Sub.")).toBe(
+    expect(stripStudyPreamble('Let me research.\n\n## Products\n- Pub/Sub.')).toBe(
       '## Products\n- Pub/Sub.',
     );
   });

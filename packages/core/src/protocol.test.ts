@@ -38,9 +38,9 @@ describe('answer message', () => {
     // Player answer: no quip.
     expect(parseAnswerMessage({ idx: 2, choice: 'B' })).toEqual({ idx: 2, choice: 'B' });
     // Agent answer: carries the one-liner on the host-only fan-in.
-    expect(parseAnswerMessage({ idx: 2, choice: 'B', confidence: 0.8, quip: 'Elementary.' })).toEqual(
-      { idx: 2, choice: 'B', confidence: 0.8, quip: 'Elementary.' },
-    );
+    expect(
+      parseAnswerMessage({ idx: 2, choice: 'B', confidence: 0.8, quip: 'Elementary.' }),
+    ).toEqual({ idx: 2, choice: 'B', confidence: 0.8, quip: 'Elementary.' });
     // A non-string quip is rejected (can't be smuggled through).
     expect(answerMessageSchema.safeParse({ idx: 2, choice: 'B', quip: 42 }).success).toBe(false);
   });
@@ -101,7 +101,9 @@ describe('commentary message (§B2.9)', () => {
       text: 'And they',
       done: false,
     });
-    expect(parseCommentary({ text: 'Silicon takes it!', done: true })).toMatchObject({ done: true });
+    expect(parseCommentary({ text: 'Silicon takes it!', done: true })).toMatchObject({
+      done: true,
+    });
     expect(parseCommentary({ text: 'no done flag' })).toBeNull();
     expect(parseCommentary('nope')).toBeNull();
   });
@@ -183,7 +185,13 @@ describe('quiz config', () => {
   });
 
   it('accepts a declared agent roster and rejects a malformed entry', () => {
-    const agent = { slug: 'matt-fable', name: 'Matt Fable', emoji: '🎲', owner: 'Matt', model: 'claude-fable-5' };
+    const agent = {
+      slug: 'matt-fable',
+      name: 'Matt Fable',
+      emoji: '🎲',
+      owner: 'Matt',
+      model: 'claude-fable-5',
+    };
     expect(quizConfigSchema.safeParse({ ...base, agents: [agent] }).success).toBe(true);
     // missing required display fields (name/emoji/owner/model) → rejected
     expect(quizConfigSchema.safeParse({ ...base, agents: [{ slug: 'x' }] }).success).toBe(false);

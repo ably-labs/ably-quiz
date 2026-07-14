@@ -102,12 +102,14 @@ export function ablyOsMcpUrl(): string {
 const CATALOG_GROUPS: ReadonlyArray<{ label: string; tools: string; note: string }> = [
   {
     label: 'Wiki (docs)',
-    tools: 'wikiSearchPages, wikiSearchUsingCql, wikiGetPage, wikiGetPagesInSpace, wikiGetSpaces, wikiGetBlogPost',
+    tools:
+      'wikiSearchPages, wikiSearchUsingCql, wikiGetPage, wikiGetPagesInSpace, wikiGetSpaces, wikiGetBlogPost',
     note: 'search & read Ably documentation and internal pages',
   },
   {
     label: 'GitHub',
-    tools: 'githubSearchAblyRepositories, githubGetFileContents, githubGetRepository, githubGetIssue, githubGetCommit, githubSmartSearch',
+    tools:
+      'githubSearchAblyRepositories, githubGetFileContents, githubGetRepository, githubGetIssue, githubGetCommit, githubSmartSearch',
     note: 'search & read Ably code, repos, issues',
   },
   {
@@ -117,7 +119,8 @@ const CATALOG_GROUPS: ReadonlyArray<{ label: string; tools: string; note: string
   },
   {
     label: 'Chat',
-    tools: 'chatListChannels, chatFindAndAnalyze, chatDiscoverThemes, chatChannelActivity, chatAnalyzeThread',
+    tools:
+      'chatListChannels, chatFindAndAnalyze, chatDiscoverThemes, chatChannelActivity, chatAnalyzeThread',
     note: 'search & summarize internal Chat discussion',
   },
   {

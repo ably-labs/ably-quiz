@@ -226,7 +226,8 @@ export default function HostPage() {
 function AgentHealthBanner({ health }: { health: HealthState }) {
   if (health.status === 'ok') return null;
   const broken = health.results.filter((r) => !r.ok);
-  const base = 'mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-3 text-sm';
+  const base =
+    'mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-3 text-sm';
 
   if (health.status === 'checking') {
     return (
@@ -242,7 +243,11 @@ function AgentHealthBanner({ health }: { health: HealthState }) {
         <span className="text-neutral-400">
           {health.error ?? 'Set AI_GATEWAY_API_KEY in .env.local — agents can’t answer without it.'}
         </span>
-        <button type="button" onClick={health.recheck} className="ml-auto text-xs text-neutral-400 underline hover:text-neutral-200">
+        <button
+          type="button"
+          onClick={health.recheck}
+          className="ml-auto text-xs text-neutral-400 underline hover:text-neutral-200"
+        >
           re-check
         </button>
       </div>
@@ -264,7 +269,11 @@ function AgentHealthBanner({ health }: { health: HealthState }) {
           {health.error && <li>{health.error}</li>}
         </ul>
       </div>
-      <button type="button" onClick={health.recheck} className="ml-auto shrink-0 text-xs text-neutral-400 underline hover:text-neutral-200">
+      <button
+        type="button"
+        onClick={health.recheck}
+        className="ml-auto shrink-0 text-xs text-neutral-400 underline hover:text-neutral-200"
+      >
         re-check
       </button>
     </div>
@@ -276,7 +285,8 @@ function shortError(err?: string): string {
   if (!err) return 'unavailable';
   if (/quota|billing|insufficient/i.test(err)) return 'out of credit / quota';
   if (/rate limit|429/i.test(err)) return 'rate-limited';
-  if (/not found|unknown model|does not exist/i.test(err)) return 'model not available on the gateway';
+  if (/not found|unknown model|does not exist/i.test(err))
+    return 'model not available on the gateway';
   if (/auth|401|invalid.*key/i.test(err)) return 'auth error (check the gateway key)';
   return err.length > 80 ? `${err.slice(0, 80)}…` : err;
 }
