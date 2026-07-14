@@ -112,4 +112,17 @@ describe('loadRegistry', () => {
     expect(missing.agents).toEqual([]);
     expect(missing.errors).toHaveLength(1);
   });
+
+  it('attaches study/answer hooks from the modules map (agent.ts), by slug', async () => {
+    const study = async () => 'crib';
+    const answer = async () => ({}) as never;
+    const withMods = await loadRegistry(root, { modules: { 'matt-fable': { study, answer } } });
+    const fable = withMods.agents.find((a) => a.manifest.slug === 'matt-fable');
+    const plain = withMods.agents.find((a) => a.manifest.slug === 'no-crib-yet');
+    expect(fable?.study).toBe(study);
+    expect(fable?.answer).toBe(answer);
+    // An agent without a module entry gets no hooks (falls back to defaults).
+    expect(plain?.study).toBeUndefined();
+    expect(plain?.answer).toBeUndefined();
+  });
 });

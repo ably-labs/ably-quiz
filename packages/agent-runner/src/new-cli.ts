@@ -15,12 +15,24 @@ import { agentManifestSchema, PROVIDERS } from './schema';
 
 const AGENTS_DIR = fileURLToPath(new URL('../../../agents/', import.meta.url));
 
-const AGENT_TS_STUB = `// Optional custom hooks for this agent (advanced). The default provider path
-// (packages/agent-runner/src/runner.ts) already answers from your agent.json —
-// you only need this file to override behaviour.
+const AGENT_TS_STUB = `// agents/<slug>/agent.ts — design this agent's behaviour (optional).
 //
-//   export async function study(ctx) { /* build a crib.md from your own sources */ }
-//   export async function answer(ctx) { /* full control over the answer */ }
+// An agent works from agent.json alone. Add hooks here only to customise:
+//   • study  — build your crib your way (\`pnpm agents:study\`)
+//   • answer — full control over how you answer a question
+// Both are optional and fall back (study → the "study" strategy named in
+// agent.json; answer → the shared default core). Reuse the shared building blocks
+// or replace them entirely. See agents/matt-opus/agent.ts for a worked example
+// and agents/README.md for the full contract. After adding or removing hooks, run
+// \`pnpm agents:build\` so the web app runs them (dev/build do this automatically).
+
+// import { ablyMcpStudy, answerQuestion, type AgentModule } from '@ably-quiz/agent-runner';
+//
+// export const study: AgentModule['study'] = ablyMcpStudy;
+//
+// export const answer: AgentModule['answer'] = (agent, question, opts) =>
+//   answerQuestion(agent, question, opts);
+
 export {};
 `;
 

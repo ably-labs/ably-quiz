@@ -16,3 +16,6 @@ export * from './registry';
 export * from './runner';
 export * from './think-stream';
 export * from './study';
+// Types only (the dynamic-import loader in ./agent-loader is intentionally not
+// re-exported — see the bundle note above and agent-loader.ts).
+export type { AgentModule, AnswerFn } from './agent-module';

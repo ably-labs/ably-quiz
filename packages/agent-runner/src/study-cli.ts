@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { config as loadEnv } from 'dotenv';
+import { loadAgentModules } from './agent-loader';
 import { authorizeMcp } from './mcp-oauth';
 import { streamAnswer } from './providers';
 import { loadRegistry } from './registry';
@@ -101,7 +102,8 @@ async function main(): Promise<void> {
 
   loadEnv({ path: ENV_LOCAL });
   const digest = (await readOptional(DIGEST_PATH)) ?? '';
-  const { agents, errors } = await loadRegistry(AGENTS_DIR);
+  const modules = await loadAgentModules(AGENTS_DIR);
+  const { agents, errors } = await loadRegistry(AGENTS_DIR, { modules });
   for (const e of errors) console.warn(`skip ${e.slug}: ${e.error}`);
 
   const chosen = values.agent ? agents.filter((a) => a.manifest.slug === values.agent) : agents;
@@ -110,11 +112,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Authenticate ONCE up front, and only if an in-scope agent actually needs the
-  // MCP — the whole roster shares one token. Missing ANTHROPIC_API_KEY (the
-  // connector) or a declined/failed sign-in ⇒ ably-mcp agents skip gracefully.
+  // Resolve each agent's study: a custom `study` from its agent.ts wins; else the
+  // named strategy in agent.json; else nothing. (agent.ts hooks were attached by
+  // loadRegistry via the modules we imported above.)
+  const resolved = chosen.map((a) => {
+    if (a.study) return { a, study: a.study, source: 'agent.ts' };
+    const named = a.manifest.study;
+    const strat = named ? STRATEGIES[named] : undefined;
+    return { a, study: strat, source: named ?? 'none' };
+  });
+
+  // Authenticate ONCE up front, and only if an in-scope agent actually resolves to
+  // the MCP study — the whole roster shares one token. Missing ANTHROPIC_API_KEY
+  // (the connector) or a declined/failed sign-in ⇒ those agents skip gracefully.
   let research: StudyContext['research'];
-  const needsMcp = chosen.some((a) => a.manifest.study === 'ably-mcp');
+  const needsMcp = resolved.some((r) => r.study === ablyMcpStudy);
   if (needsMcp) {
     if (!process.env.ANTHROPIC_API_KEY) {
       console.log('  ably-mcp study needs ANTHROPIC_API_KEY (the MCP connector) — skipping those agents.');
@@ -125,33 +137,27 @@ async function main(): Promise<void> {
   }
 
   let wrote = 0;
-  for (const a of chosen) {
-    const name = a.manifest.study;
-    if (!name) {
-      console.log(`${a.manifest.slug}: no study strategy — skipped`);
-      continue;
-    }
-    const study = STRATEGIES[name];
+  for (const { a, study, source } of resolved) {
+    const slug = a.manifest.slug;
     if (!study) {
-      console.warn(`${a.manifest.slug}: unknown study strategy "${name}" — skipped`);
+      const why = a.manifest.study ? `unknown strategy "${a.manifest.study}"` : 'no study strategy';
+      console.log(`${slug}: ${why} — skipped`);
       continue;
     }
     // MCP study needs an authenticated session; without one, skip (keeping the
     // existing crib) rather than fail — matches "missing cred → skip gracefully".
-    if (name === 'ably-mcp' && !research) {
-      console.log(`${a.manifest.slug}: ably-mcp study skipped — not authenticated`);
+    if (study === ablyMcpStudy && !research) {
+      console.log(`${slug}: ably-mcp study skipped — not authenticated`);
       continue;
     }
     const ctx: StudyContext = { agent: a.manifest, digest, fetchText, research };
     try {
       const crib = await study(ctx);
       await writeFile(join(a.dir, 'crib.md'), crib.endsWith('\n') ? crib : `${crib}\n`, 'utf8');
-      console.log(`${a.manifest.slug}: wrote crib.md via "${name}" (${crib.length} chars)`);
+      console.log(`${slug}: wrote crib.md via ${source} (${crib.length} chars)`);
       wrote += 1;
     } catch (err) {
-      console.error(
-        `${a.manifest.slug}: study failed — ${err instanceof Error ? err.message : err}`,
-      );
+      console.error(`${slug}: study failed — ${err instanceof Error ? err.message : err}`);
     }
   }
   console.log(`done — ${wrote}/${chosen.length} crib(s) written`);

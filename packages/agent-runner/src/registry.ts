@@ -5,7 +5,9 @@
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { AgentModule, AnswerFn } from './agent-module';
 import { agentManifestSchema, type AgentManifest } from './schema';
+import type { StudyFn } from './study';
 
 export type LoadedAgent = {
   manifest: AgentManifest;
@@ -13,12 +15,26 @@ export type LoadedAgent = {
   dir: string;
   /** Contents of the crib file, if `manifest.crib` is set and readable. */
   crib?: string;
+  /** Custom `study` hook from the agent's agent.ts (overrides the named strategy). */
+  study?: StudyFn;
+  /** Custom `answer` hook from the agent's agent.ts (overrides the default core). */
+  answer?: AnswerFn;
 };
 
 export type RegistryError = { slug: string; dir: string; error: string };
 export type Registry = { agents: LoadedAgent[]; errors: RegistryError[] };
 
-export async function loadRegistry(agentsDir: string): Promise<Registry> {
+export type LoadRegistryOptions = {
+  /** Per-slug behaviour modules (agent.ts hooks). The CLIs build this by
+   *  dynamically importing agent.ts (loadAgentModules); the web app passes the
+   *  generated static map. Absent ⇒ agents are JSON + crib only. */
+  modules?: Record<string, AgentModule>;
+};
+
+export async function loadRegistry(
+  agentsDir: string,
+  opts: LoadRegistryOptions = {},
+): Promise<Registry> {
   const agents: LoadedAgent[] = [];
   const errors: RegistryError[] = [];
 
@@ -58,6 +74,10 @@ export async function loadRegistry(agentsDir: string): Promise<Registry> {
     }
 
     const loaded: LoadedAgent = { manifest: parsed.data, dir };
+    // Attach behaviour hooks from the agent's module, if any (agent.ts).
+    const mod = opts.modules?.[name];
+    if (mod?.study) loaded.study = mod.study;
+    if (mod?.answer) loaded.answer = mod.answer;
     if (parsed.data.crib) {
       try {
         loaded.crib = await readFile(join(dir, parsed.data.crib), 'utf8');
