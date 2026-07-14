@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { Lobby } from '@/components/Lobby';
 import { Countdown, LETTERS, QuestionCard, Scoreboard, TallyBars } from '@/components/quiz';
+import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
 import { useAbly } from '@/hooks/useAbly';
 import { useHostQuiz } from '@/hooks/useHostQuiz';
 import { useMcpAuth, type McpAuth } from '@/hooks/useMcpAuth';
@@ -132,7 +133,14 @@ export default function HostPage() {
             Commentary →
           </Control>
         )}
-        {ended && <p className="text-neutral-400">Quiz complete — results are on the screen.</p>}
+        {ended && (
+          <div className="flex flex-wrap items-center gap-4">
+            <p className="text-neutral-400">Quiz complete — results are on the screen.</p>
+            <a href="/" className="text-sm font-medium text-ably hover:underline">
+              + New quiz
+            </a>
+          </div>
+        )}
       </div>
 
       {ended && Object.keys(live.scoreboard).length > 0 && (
@@ -140,7 +148,7 @@ export default function HostPage() {
           <h2 className="mb-2 text-sm font-semibold tracking-wide text-neutral-400 uppercase">
             Final standings
           </h2>
-          <Scoreboard scoreboard={live.scoreboard} limit={12} />
+          <Scoreboard scoreboard={live.scoreboard} limit={12} agents={quiz.config.agents} />
         </section>
       )}
 
@@ -153,11 +161,29 @@ export default function HostPage() {
  *  authenticates, then Anthropic agents can look up Ably knowledge (read-only). */
 function McpAuthBanner({ mcp }: { mcp: McpAuth }) {
   const busy = mcp.status === 'starting' || mcp.status === 'exchanging';
+  const mcpHost = (() => {
+    try {
+      return new URL(ABLY_OS_MCP_BASE).host;
+    } catch {
+      return ABLY_OS_MCP_BASE;
+    }
+  })();
+  const mcpLink = (
+    <a
+      href={ABLY_OS_MCP_BASE}
+      target="_blank"
+      rel="noreferrer"
+      className="font-mono text-xs text-neutral-500 underline decoration-neutral-700 hover:text-neutral-300"
+    >
+      {mcpHost}
+    </a>
+  );
+
   if (mcp.status === 'authed') {
     return (
-      <div className="mb-6 flex items-center gap-3 rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-4 py-3 text-sm">
+      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-4 py-3 text-sm">
         <span className="text-emerald-400">✓ Agents grounded with MCP</span>
-        <span className="text-neutral-500">read-only · this session only</span>
+        <span className="text-neutral-500">read-only · this session only · via {mcpLink}</span>
         <button
           type="button"
           onClick={mcp.signOut}
@@ -170,10 +196,12 @@ function McpAuthBanner({ mcp }: { mcp: McpAuth }) {
   }
   return (
     <div className="mb-6 flex items-center gap-4 rounded-lg border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm">
-      <div>
-        <p className="text-neutral-300">Agents are playing on their own knowledge.</p>
+      <div className="space-y-0.5">
+        <p className="text-neutral-300">
+          Optional — agents play fine on their own knowledge without this.
+        </p>
         <p className="text-neutral-500">
-          Authenticate with MCP to let them look up company knowledge (read-only).
+          Sign in to let them look up your company knowledge (read-only) via {mcpLink}.
           {mcp.error && <span className="text-red-400"> — {mcp.error}</span>}
         </p>
       </div>

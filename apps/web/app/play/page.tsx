@@ -3,7 +3,14 @@
 import type { ReactNode } from 'react';
 import { answersChannel, type Choice } from '@ably-quiz/core';
 import { useEffect, useMemo, useState } from 'react';
-import { AnswerButtons, Countdown, QuestionCard, TallyBars } from '@/components/quiz';
+import {
+  AnswerButtons,
+  Countdown,
+  identityEmoji,
+  QuestionCard,
+  Scoreboard,
+  TallyBars,
+} from '@/components/quiz';
 import { Lobby } from '@/components/Lobby';
 import { useAbly, usePresence } from '@/hooks/useAbly';
 import { useQuizId } from '@/hooks/useQuizId';
@@ -83,11 +90,18 @@ export default function PlayPage() {
   return (
     <main className="mx-auto max-w-md px-5 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <div>
-          <p className="text-xs tracking-widest text-neutral-500 uppercase">
-            {nickname.trim() || 'Player'}
-          </p>
-          <p className="text-lg font-bold tabular-nums">{me?.score ?? 0} pts</p>
+        <div className="flex items-center gap-2">
+          {conn && (
+            <span className="text-2xl" aria-hidden>
+              {identityEmoji(conn.clientId)}
+            </span>
+          )}
+          <div>
+            <p className="text-xs tracking-widest text-neutral-500 uppercase">
+              {nickname.trim() || 'Player'}
+            </p>
+            <p className="text-lg font-bold tabular-nums">{me?.score ?? 0} pts</p>
+          </div>
         </div>
         <StatusDot status={status} />
       </div>
@@ -158,22 +172,29 @@ export default function PlayPage() {
       )}
 
       {(view.phase === 'podium' || view.phase === 'analysis' || view.phase === 'done') && (
-        <div className="space-y-4 text-center">
-          <p className="text-2xl font-bold">That&apos;s a wrap!</p>
-          {myRank > 0 ? (
-            <p className="text-5xl font-extrabold tabular-nums">
-              #{myRank}
-              <span className="text-2xl font-normal text-neutral-500"> of {ranking.length}</span>
-            </p>
-          ) : null}
-          <p className="text-neutral-400">{me?.score ?? 0} pts</p>
-          {winner && (
-            <p className="text-sm text-neutral-500">
-              🏆 {winner.name} won{' '}
-              {winner.kind === 'agent' ? '— Silicon takes it' : '— Carbon takes it'}. See the big
-              screen.
-            </p>
-          )}
+        <div className="space-y-6">
+          <div className="space-y-2 text-center">
+            <p className="text-2xl font-bold">That&apos;s a wrap!</p>
+            {myRank > 0 ? (
+              <p className="text-5xl font-extrabold tabular-nums">
+                #{myRank}
+                <span className="text-2xl font-normal text-neutral-500"> of {ranking.length}</span>
+              </p>
+            ) : null}
+            <p className="text-neutral-400">{me?.score ?? 0} pts</p>
+            {winner && (
+              <p className="text-sm text-neutral-500">
+                🏆 {winner.name} won —{' '}
+                {winner.kind === 'agent' ? 'Silicon takes it' : 'Carbon takes it'}.
+              </p>
+            )}
+          </div>
+          <div>
+            <h3 className="mb-2 text-center text-xs tracking-widest text-neutral-500 uppercase">
+              Final standings
+            </h3>
+            <Scoreboard scoreboard={view.scoreboard} limit={12} agents={view.config?.agents} />
+          </div>
         </div>
       )}
     </main>

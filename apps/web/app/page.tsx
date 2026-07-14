@@ -310,8 +310,10 @@ export default function CreatePage() {
               return (
                 <label
                   key={a.slug}
-                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm ${
-                    on ? 'border-ably/60 bg-ably/5' : 'border-neutral-800 opacity-60'
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition ${
+                    on
+                      ? 'border-neutral-700 bg-neutral-900/40'
+                      : 'border-neutral-800 bg-transparent opacity-45'
                   }`}
                 >
                   <input

@@ -93,7 +93,7 @@ export default function ScreenPage() {
               <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">
                 Scoreboard
               </h3>
-              <Scoreboard scoreboard={view.scoreboard} />
+              <Scoreboard scoreboard={view.scoreboard} agents={view.config?.agents} />
             </div>
             <div className="self-start">
               <TugOfWar scoreboard={view.scoreboard} />
@@ -114,7 +114,7 @@ export default function ScreenPage() {
               </p>
             </div>
           )}
-          <Podium scoreboard={view.scoreboard} />
+          <Podium scoreboard={view.scoreboard} agents={view.config?.agents} />
         </section>
       )}
     </main>

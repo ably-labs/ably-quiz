@@ -1,10 +1,27 @@
 'use client';
 
-import type { AgentRosterEntry, Choice, Kind, ScoreboardEntry, Tallies } from '@ably-quiz/core';
+import type { AgentRosterEntry, Choice, ScoreboardEntry, Tallies } from '@ably-quiz/core';
 import { useEffect, useState } from 'react';
 import type { AgentThinkState } from '@/hooks/useAgentThinking';
 
 export const LETTERS: Choice[] = ['A', 'B', 'C', 'D'];
+
+// Every contestant gets an icon: agents wear their manifest emoji, humans get a
+// stable, friendly one derived from their clientId (so it's consistent all game
+// without anyone choosing). Keeps identity visual + reduces reliance on badges.
+const HUMAN_EMOJIS = [
+  '🦊', '🐼', '🦁', '🐙', '🦉', '🐝', '🦄', '🐢',
+  '🦈', '🐸', '🐵', '🦩', '🐺', '🦥', '🐬', '🦔',
+];
+export function identityEmoji(clientId: string, agents: AgentRosterEntry[] = []): string {
+  if (clientId.startsWith('a:')) {
+    const slug = clientId.slice(2);
+    return agents.find((a) => a.slug === slug)?.emoji ?? '🤖';
+  }
+  let h = 0;
+  for (let i = 0; i < clientId.length; i++) h = (h * 31 + clientId.charCodeAt(i)) >>> 0;
+  return HUMAN_EMOJIS[h % HUMAN_EMOJIS.length]!;
+}
 // Functional answer colours (distinct + always paired with the letter, so never
 // colour-alone). The brand's single orange accent lives in the chrome (§B2.10).
 const OPTION_TINT: Record<Choice, string> = {
@@ -215,26 +232,31 @@ export function Scoreboard({
   scoreboard,
   limit = 8,
   offset = 0,
+  agents = [],
 }: {
   scoreboard: Record<string, ScoreboardEntry>;
   limit?: number;
   /** Skip this many top entries (e.g. 3 to list runners-up beneath a podium). */
   offset?: number;
+  /** Declared roster, to resolve each agent's emoji. */
+  agents?: AgentRosterEntry[];
 }) {
-  const rows = Object.values(scoreboard)
-    .sort((a, b) => b.score - a.score)
+  const rows = Object.entries(scoreboard)
+    .sort((a, b) => b[1].score - a[1].score)
     .slice(offset, offset + limit);
   return (
     <ol className="space-y-1">
-      {rows.map((e, i) => (
+      {rows.map(([clientId, e], i) => (
         <li
-          key={`${e.name}-${offset + i}`}
+          key={clientId}
           className="flex items-center gap-3 rounded-lg bg-neutral-900/60 px-4 py-2"
         >
           <span className="w-6 text-right font-bold text-neutral-500 tabular-nums">
             {offset + i + 1}
           </span>
-          <SpeciesBadge kind={e.kind} />
+          <span className="text-lg" aria-hidden>
+            {identityEmoji(clientId, agents)}
+          </span>
           <span className="flex-1 truncate">{e.name}</span>
           <span className="font-bold tabular-nums">{e.score}</span>
         </li>
@@ -246,8 +268,16 @@ export function Scoreboard({
 /** End-of-quiz podium (§B2.10): top three on a staggered stage, everyone else
  *  in a runners-up list, and the Carbon-vs-Silicon verdict. Confetti + richer
  *  motion land in the S5.2 polish pass; this is the structural results view. */
-export function Podium({ scoreboard }: { scoreboard: Record<string, ScoreboardEntry> }) {
-  const ranked = Object.values(scoreboard).sort((a, b) => b.score - a.score);
+export function Podium({
+  scoreboard,
+  agents = [],
+}: {
+  scoreboard: Record<string, ScoreboardEntry>;
+  agents?: AgentRosterEntry[];
+}) {
+  const ranked = Object.entries(scoreboard)
+    .map(([clientId, e]) => ({ clientId, ...e }))
+    .sort((a, b) => b.score - a.score);
   if (ranked.length === 0) {
     return <p className="text-center text-neutral-500">No one scored this round.</p>;
   }
@@ -280,7 +310,9 @@ export function Podium({ scoreboard }: { scoreboard: Record<string, ScoreboardEn
             >
               <div className="text-4xl sm:text-5xl">{col.medal}</div>
               <div className="mt-1 flex items-center gap-1.5">
-                <SpeciesBadge kind={col.entry.kind} />
+                <span className="text-lg" aria-hidden>
+                  {identityEmoji(col.entry.clientId, agents)}
+                </span>
                 <span className="max-w-[8rem] truncate font-semibold">{col.entry.name}</span>
               </div>
               <div className="text-lg font-bold tabular-nums">{col.entry.score}</div>
@@ -303,7 +335,7 @@ export function Podium({ scoreboard }: { scoreboard: Record<string, ScoreboardEn
           <h3 className="mb-2 text-center text-sm tracking-widest text-neutral-500 uppercase">
             Runners-up
           </h3>
-          <Scoreboard scoreboard={scoreboard} offset={3} limit={12} />
+          <Scoreboard scoreboard={scoreboard} offset={3} limit={12} agents={agents} />
         </div>
       )}
 
@@ -312,10 +344,3 @@ export function Podium({ scoreboard }: { scoreboard: Record<string, ScoreboardEn
   );
 }
 
-function SpeciesBadge({ kind }: { kind: Kind }) {
-  return kind === 'agent' ? (
-    <span className="rounded bg-ably/20 px-1.5 text-xs text-ably">AI</span>
-  ) : (
-    <span className="rounded bg-sky-500/20 px-1.5 text-xs text-sky-400">H</span>
-  );
-}
