@@ -11,7 +11,7 @@ import {
   type QuestionDef,
   type QuizConfig,
 } from '@ably-quiz/core';
-import QRCode from 'qrcode';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { BrandMark } from '@/components/BrandMark';
 import {
@@ -122,12 +122,12 @@ function validate(
 }
 
 export default function CreatePage() {
+  const router = useRouter();
   const [rows, setRows] = useState<GridRow[]>(() => Array.from({ length: START_ROWS }, emptyRow));
   const [defaultLimitS, setDefaultLimitS] = useState(LIMIT_DEFAULT_S);
   const [algoId, setAlgoId] = useState(DEFAULT_ALGO_ID);
   const [streakEnabled, setStreakEnabled] = useState(false);
   const [autoReveal, setAutoReveal] = useState(true);
-  const [created, setCreated] = useState<{ quiz: StoredQuiz; origin: string } | null>(null);
   const [devLike, setDevLike] = useState(false);
   useEffect(() => setDevLike(isLocalHost()), []);
 
@@ -173,10 +173,10 @@ export default function CreatePage() {
     };
     const quiz: StoredQuiz = { quizId, createdAt: Date.now(), questions, config };
     saveQuiz(quiz);
-    setCreated({ quiz, origin: window.location.origin });
+    // Straight into the host control room — it carries the share QR + big-screen
+    // link now, so there's no separate "quiz ready" hop (§S5.2).
+    router.push(`/host?quiz=${quizId}`);
   }
-
-  if (created) return <CreatedView quiz={created.quiz} origin={created.origin} />;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
@@ -351,90 +351,6 @@ export default function CreatePage() {
       >
         Create quiz
       </button>
-    </main>
-  );
-}
-
-/** Standard "opens in a new tab" glyph — a box with an arrow leaving the top-right. */
-function ExternalLinkIcon({ className = '' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`inline-block h-[1em] w-[1em] shrink-0 ${className}`}
-      aria-hidden
-    >
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <path d="M15 3h6v6" />
-      <path d="M10 14 21 3" />
-    </svg>
-  );
-}
-
-function CreatedView({ quiz, origin }: { quiz: StoredQuiz; origin: string }) {
-  const joinUrl = `${origin}/play?quiz=${quiz.quizId}`;
-  const screenUrl = `${origin}/screen?quiz=${quiz.quizId}`;
-  const hostUrl = `${origin}/host?quiz=${quiz.quizId}`;
-  const [qr, setQr] = useState('');
-
-  useEffect(() => {
-    void QRCode.toString(joinUrl, {
-      type: 'svg',
-      margin: 1,
-      color: { dark: '#ededed', light: '#00000000' },
-    }).then(setQr);
-  }, [joinUrl]);
-
-  return (
-    <main className="mx-auto max-w-2xl px-6 py-12 text-center">
-      <BrandMark className="mb-8" />
-      <p className="text-xs font-medium tracking-[0.3em] text-neutral-500 uppercase">quiz ready</p>
-      <h1 className="mt-1 text-4xl font-extrabold tracking-tight">{quiz.quizId}</h1>
-      <p className="mt-2 text-neutral-400">
-        {quiz.questions.length} questions · scoring: {quiz.config.scoringAlgoId}
-        {quiz.config.streakEnabled ? ' + streak' : ''}
-      </p>
-
-      <div
-        className="mx-auto mt-8 w-56"
-        aria-label="Join QR code"
-        dangerouslySetInnerHTML={{ __html: qr }}
-      />
-      <a
-        href={joinUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-3 inline-flex items-center gap-1.5 font-mono text-sm text-neutral-300 transition hover:text-ink hover:underline"
-      >
-        {joinUrl}
-        <ExternalLinkIcon className="text-neutral-500" />
-      </a>
-
-      <div className="mt-10 flex flex-wrap justify-center gap-3">
-        <a
-          href={screenUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg bg-ably px-5 py-3 font-semibold text-black"
-        >
-          Open screen <ExternalLinkIcon />
-        </a>
-        <a
-          href={hostUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-5 py-3 font-semibold text-ink hover:border-neutral-500"
-        >
-          Open host controls <ExternalLinkIcon />
-        </a>
-      </div>
-      <p className="mt-6 text-xs text-neutral-600">
-        Open the screen on the projector and host controls on your laptop (same machine).
-      </p>
     </main>
   );
 }

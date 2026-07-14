@@ -28,6 +28,26 @@ export function identityEmoji(clientId: string, agents: AgentRosterEntry[] = [])
   for (let i = 0; i < clientId.length; i++) h = (h * 31 + clientId.charCodeAt(i)) >>> 0;
   return HUMAN_EMOJIS[h % HUMAN_EMOJIS.length]!;
 }
+/** A box-with-arrow glyph for links that open a new tab. Sized in `em`. */
+export function ExternalLinkIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`inline-block h-[1em] w-[1em] shrink-0 ${className}`}
+      aria-hidden
+    >
+      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+    </svg>
+  );
+}
+
 /** Small character mark for a team — Carbon (the brain) or Silicon (the chip),
  *  derived from the hero. Used sparingly for identity continuity (rosters, the
  *  tug-of-war) without dragging the whole scene onto every screen. Size via

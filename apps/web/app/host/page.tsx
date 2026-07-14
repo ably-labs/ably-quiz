@@ -3,10 +3,12 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { BrandMark } from '@/components/BrandMark';
+import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
 import {
   Countdown,
   CounterfactualPanel,
+  ExternalLinkIcon,
   LETTERS,
   QuestionCard,
   Scoreboard,
@@ -84,6 +86,8 @@ export default function HostPage() {
 
       <AgentHealthBanner health={health} />
       <McpAuthBanner mcp={mcpAuth} />
+
+      {state.phase === 'lobby' && <HostShare quizId={quizId} />}
 
       {showQuestion && (
         <section className="mb-6 space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">
@@ -305,6 +309,48 @@ function McpAuthBanner({ mcp }: { mcp: McpAuth }) {
         {busy ? 'Connecting…' : 'Authenticate agents'}
       </button>
     </div>
+  );
+}
+
+/** Lobby share panel (§S5.2): the QR + join link players scan, plus a link to
+ *  open the projector view. Replaces the old standalone "quiz ready" page — the
+ *  host lands straight here after creating. The big hero lives on /screen (the
+ *  thing you project); this panel stays a compact control-room affordance. */
+function HostShare({ quizId }: { quizId: string }) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const joinUrl = `${origin}/play?quiz=${quizId}`;
+  const screenUrl = `${origin}/screen?quiz=${quizId}`;
+  return (
+    <section className="mb-8 flex flex-col items-center gap-6 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6 sm:flex-row">
+      <div className="shrink-0 rounded-xl bg-neutral-950 p-3">
+        <JoinQr url={joinUrl} size={132} />
+      </div>
+      <div className="min-w-0 flex-1 text-center sm:text-left">
+        <p className="text-xs tracking-widest text-neutral-500 uppercase">players join at</p>
+        <a
+          href={joinUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-flex items-center gap-1.5 font-mono text-sm break-all text-neutral-300 transition hover:text-ink hover:underline"
+        >
+          {joinUrl}
+          <ExternalLinkIcon className="text-neutral-500" />
+        </a>
+        <div className="mt-4">
+          <a
+            href={screenUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg bg-ably px-5 py-2.5 font-semibold text-black transition hover:brightness-110"
+          >
+            Open big screen <ExternalLinkIcon />
+          </a>
+        </div>
+        <p className="mt-3 text-xs text-neutral-600">
+          Project the big screen; players scan to join. You drive the quiz from here.
+        </p>
+      </div>
+    </section>
   );
 }
 
