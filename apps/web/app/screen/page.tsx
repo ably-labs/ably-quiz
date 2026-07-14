@@ -7,6 +7,7 @@ import { Lobby } from '@/components/Lobby';
 import {
   AgentThinkingWall,
   Countdown,
+  CounterfactualPanel,
   Podium,
   QuestionCard,
   Scoreboard,
@@ -115,6 +116,9 @@ export default function ScreenPage() {
             </div>
           )}
           <Podium scoreboard={view.scoreboard} agents={view.config?.agents} />
+          {view.counterfactual && (
+            <CounterfactualPanel payload={view.counterfactual} agents={view.config?.agents} />
+          )}
         </section>
       )}
     </main>

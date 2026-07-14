@@ -175,3 +175,36 @@ export function parseCommentary(data: unknown): CommentaryMessage | null {
   const result = commentaryMessageSchema.safeParse(data);
   return result.success ? result.data : null;
 }
+
+// --- Counterfactual "by the way…" panel (§B2.6 / S5.1) ----------------------
+// Published once by the host on the main channel when the quiz reaches
+// `analysis`: the final standings recomputed under EVERY scoring algorithm,
+// name/kind-resolved and trimmed to the top few, so /screen · /play · host can
+// show "under fastest-finger the winner would've been Priya, not Matt". Pure
+// recompute over the persisted answer log — no extra infra.
+export const counterfactualStandingSchema = z.object({
+  clientId: z.string().min(1),
+  name: z.string().min(1),
+  kind: kindSchema,
+  score: z.number(),
+});
+export type CounterfactualStanding = z.infer<typeof counterfactualStandingSchema>;
+
+export const counterfactualPayloadSchema = z.object({
+  /** The algorithm the quiz was actually scored under (its row is "scored live"). */
+  activeAlgoId: z.string(),
+  algos: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      blurb: z.string(),
+      top: z.array(counterfactualStandingSchema),
+    }),
+  ),
+});
+export type CounterfactualPayload = z.infer<typeof counterfactualPayloadSchema>;
+
+export function parseCounterfactual(data: unknown): CounterfactualPayload | null {
+  const result = counterfactualPayloadSchema.safeParse(data);
+  return result.success ? result.data : null;
+}

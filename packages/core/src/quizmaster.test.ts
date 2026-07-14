@@ -158,6 +158,53 @@ describe('quizmaster — question loop & scoring', () => {
   });
 });
 
+describe('quizmaster — counterfactual "by the way…" payload (§S5.1)', () => {
+  it('resolves names + kind and surfaces each algorithm’s winner, incl. upsets', async () => {
+    const { qm, broadcaster } = makeQuizmaster();
+    qm.init();
+    qm.setDisplayName('p:sam', 'Steady Sam');
+    qm.setDisplayName('a:fiona', 'Fast Fiona');
+
+    await qm.askNext(); // Q0 (correct A)
+    const t0 = broadcaster.control.at(-1)!.serverTs;
+    // Sam: correct but slow on BOTH questions. Fiona: one split-second correct.
+    qm.ingest({ clientId: 'p:sam', data: { idx: 0, choice: 'A' }, serverTs: t0 + 16_000 });
+    qm.ingest({ clientId: 'a:fiona', data: { idx: 0, choice: 'A' }, serverTs: t0 + 100 });
+    await qm.lock();
+    await qm.reveal();
+
+    await qm.askNext(); // Q1 (correct B)
+    const t1 = broadcaster.control.at(-1)!.serverTs;
+    qm.ingest({ clientId: 'p:sam', data: { idx: 1, choice: 'B' }, serverTs: t1 + 16_000 });
+    // Fiona sits out Q1.
+    await qm.lock();
+    await qm.reveal();
+    await qm.podium();
+
+    const cf = qm.buildCounterfactual();
+    expect(cf.activeAlgoId).toBe('classic');
+
+    const winnerBy = (id: string) => cf.algos.find((a) => a.id === id)!.top[0]!;
+    // Two slow-but-correct answers win the accuracy-weighted rules…
+    expect(winnerBy('classic')).toMatchObject({
+      clientId: 'p:sam',
+      name: 'Steady Sam',
+      kind: 'human',
+    });
+    expect(winnerBy('steady')).toMatchObject({ clientId: 'p:sam' });
+    // …but under fastest-finger a single split-second answer beats them — the upset.
+    expect(winnerBy('fastest-finger')).toMatchObject({
+      clientId: 'a:fiona',
+      name: 'Fast Fiona',
+      kind: 'agent',
+    });
+
+    // Every algorithm appears, trimmed to the top few.
+    expect(cf.algos.map((a) => a.id)).toEqual(['classic', 'fastest-finger', 'steady']);
+    for (const a of cf.algos) expect(a.top.length).toBeLessThanOrEqual(3);
+  });
+});
+
 describe('quizmaster — T₀ race', () => {
   it('buffers answers that arrive before T₀ is captured, then scores them', async () => {
     const store = new MockStore();

@@ -4,6 +4,7 @@ import {
   parseControlMessage,
   Quizmaster,
   type Choice,
+  type CounterfactualPayload,
   type InboundAnswer,
   type QuizState,
 } from '@ably-quiz/core';
@@ -20,6 +21,7 @@ import {
   INITIAL_STATE,
   loadAnswerHistory,
   loadControlHistory,
+  publishCounterfactual,
   subscribeQuizState,
   type LiveQuizState,
 } from '@/lib/quiz-live';
@@ -58,6 +60,8 @@ export function useHostQuiz(
   expectedAnswerers: number;
   busy: boolean;
   members: Member[];
+  /** "By the way…" standings under every algorithm — built + published at analysis (§S5.1). */
+  counterfactual: CounterfactualPayload | null;
 } {
   const qmRef = useRef<Quizmaster | null>(null);
   const [state, setState] = useState<QuizState>({ phase: 'lobby', questionIdx: -1 });
@@ -67,6 +71,7 @@ export function useHostQuiz(
   const [answersIn, setAnswersIn] = useState(0);
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [counterfactual, setCounterfactual] = useState<CounterfactualPayload | null>(null);
 
   useEffect(() => {
     if (!conn || !quiz) return;
@@ -232,11 +237,23 @@ export function useHostQuiz(
   );
 
   // Fire the commentator once when the quiz enters `analysis` (§B2.9). Standings
-  // come from the live scoreboard; the breakdown streams to /screen.
+  // come from the live scoreboard; the breakdown streams to /screen. Alongside
+  // it, publish the "by the way…" counterfactual (§S5.1) — recomputed standings
+  // under every algorithm — so /screen · /play · host can show how the podium
+  // would shift under other scoring rules.
   const firedCommentator = useRef(false);
   useEffect(() => {
     if (state.phase !== 'analysis' || !quiz || firedCommentator.current) return;
     firedCommentator.current = true;
+
+    const qm = qmRef.current;
+    if (conn && qm) {
+      const payload = qm.buildCounterfactual();
+      setCounterfactual(payload);
+      const main = getMainChannel(conn.client, quiz.quizId, { write: true });
+      void publishCounterfactual(main, payload).catch(() => undefined);
+    }
+
     const entries = Object.values(live.scoreboard);
     const standings = entries
       .map((e) => ({ name: e.name, kind: e.kind, score: e.score }))
@@ -254,7 +271,7 @@ export function useHostQuiz(
         questionCount: quiz.questions.length,
       }),
     }).catch(() => undefined);
-  }, [state.phase, quiz, live.scoreboard]);
+  }, [state.phase, quiz, live.scoreboard, conn]);
 
   // --- Auto-advance (Matt, 2026-07-13) ---------------------------------------
   // A question resolves the moment it's decided — everyone present has answered,
@@ -330,5 +347,16 @@ export function useHostQuiz(
     return () => clearTimeout(timer);
   }, [state.phase, quiz, controls]);
 
-  return { state, correct, question, live, controls, answersIn, expectedAnswerers, busy, members };
+  return {
+    state,
+    correct,
+    question,
+    live,
+    controls,
+    answersIn,
+    expectedAnswerers,
+    busy,
+    members,
+    counterfactual,
+  };
 }

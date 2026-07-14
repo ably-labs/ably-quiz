@@ -1,12 +1,19 @@
 'use client';
 
-import { parseControlMessage, type Choice } from '@ably-quiz/core';
+import {
+  parseControlMessage,
+  parseCounterfactual,
+  type Choice,
+  type CounterfactualPayload,
+} from '@ably-quiz/core';
 import { useEffect, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 import {
+  COUNTERFACTUAL_EVENT,
   getMainChannel,
   INITIAL_STATE,
   loadControlHistory,
+  loadCounterfactual,
   subscribeQuizState,
   type LiveQuizState,
 } from '@/lib/quiz-live';
@@ -25,6 +32,8 @@ export type QuizView = LiveQuizState & {
   question: QuestionBroadcast | null;
   /** Correct letter once revealed for the current question. */
   correct: Choice | null;
+  /** "By the way…" standings under every scoring algorithm — set at analysis (§S5.1). */
+  counterfactual: CounterfactualPayload | null;
 };
 
 /** Read-only quiz view for /screen and /play: control broadcasts drive the
@@ -33,6 +42,7 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
   const [live, setLive] = useState<LiveQuizState>(INITIAL_STATE);
   const [question, setQuestion] = useState<QuestionBroadcast | null>(null);
   const [correct, setCorrect] = useState<Choice | null>(null);
+  const [counterfactual, setCounterfactual] = useState<CounterfactualPayload | null>(null);
 
   useEffect(() => {
     if (!conn) return;
@@ -58,6 +68,17 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
       } else if (m.type === 'reveal') {
         setCorrect(m.correct);
       }
+    });
+
+    // The "by the way…" counterfactual is a one-shot the host publishes at
+    // analysis; catch it live, and re-derive from history for a screen/player
+    // that joins or reloads after it landed (§S5.1).
+    void channel.subscribe(COUNTERFACTUAL_EVENT, (msg) => {
+      const payload = parseCounterfactual(msg.data);
+      if (payload) setCounterfactual(payload);
+    });
+    void loadCounterfactual(channel).then((payload) => {
+      if (payload) setCounterfactual((cur) => cur ?? payload);
     });
 
     void subscribeQuizState(channel, setLive).then((u) => {
@@ -96,5 +117,5 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
     };
   }, [conn, quizId]);
 
-  return { ...live, question, correct };
+  return { ...live, question, correct, counterfactual };
 }

@@ -1,6 +1,12 @@
 'use client';
 
-import type { AgentRosterEntry, Choice, ScoreboardEntry, Tallies } from '@ably-quiz/core';
+import type {
+  AgentRosterEntry,
+  Choice,
+  CounterfactualPayload,
+  ScoreboardEntry,
+  Tallies,
+} from '@ably-quiz/core';
 import { useEffect, useState } from 'react';
 import type { AgentThinkState } from '@/hooks/useAgentThinking';
 
@@ -369,6 +375,91 @@ export function Podium({
 
       <TugOfWar scoreboard={scoreboard} />
     </div>
+  );
+}
+
+/** The geeky "by the way…" panel (§S5.1): the same answers scored under every
+ *  algorithm. Collapsed by default; opening it reveals who'd have won under each
+ *  rule, so a different winner under, say, `fastest-finger` is the fun reveal.
+ *  Pure recompute — the payload arrives on the main channel at analysis. */
+export function CounterfactualPanel({
+  payload,
+  agents = [],
+  className = '',
+}: {
+  payload: CounterfactualPayload;
+  agents?: AgentRosterEntry[];
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const algos = payload.algos.filter((a) => a.top.length > 0);
+  if (algos.length === 0) return null;
+
+  const winnerOf = (id: string) => algos.find((a) => a.id === id)?.top[0];
+  const activeWinner = winnerOf(payload.activeAlgoId);
+  // The hook: how many algorithms would crown someone other than the live winner.
+  const upsets = activeWinner
+    ? algos.filter((a) => a.id !== payload.activeAlgoId && a.top[0]?.clientId !== activeWinner.clientId)
+    : [];
+
+  return (
+    <section className={`rounded-2xl border border-neutral-800 bg-neutral-900/40 ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-3 px-5 py-4 text-left"
+      >
+        <span className="text-xl" aria-hidden>
+          📊
+        </span>
+        <span className="flex-1">
+          <span className="font-semibold">by the way…</span>{' '}
+          <span className="text-sm text-neutral-400">
+            {upsets.length > 0
+              ? `${upsets.length} scoring rule${upsets.length === 1 ? '' : 's'} would crown a different winner`
+              : 'the same answers under every scoring rule'}
+          </span>
+        </span>
+        <span className="text-neutral-500" aria-hidden>
+          {open ? '▲' : '▼'}
+        </span>
+      </button>
+
+      {open && (
+        <ul className="space-y-2 border-t border-neutral-800 px-5 py-4">
+          {algos.map((a) => {
+            const winner = a.top[0]!;
+            const active = a.id === payload.activeAlgoId;
+            const changed = !active && activeWinner && winner.clientId !== activeWinner.clientId;
+            return (
+              <li
+                key={a.id}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2 ${
+                  changed ? 'bg-ably/10 ring-1 ring-ably/30' : 'bg-neutral-900/60'
+                }`}
+              >
+                <span className="w-28 shrink-0">
+                  <span className="block text-sm font-semibold">{a.label}</span>
+                  {active && <span className="text-[0.65rem] tracking-wide text-ably uppercase">scored live</span>}
+                </span>
+                <span className="hidden flex-1 truncate text-xs text-neutral-500 sm:block">
+                  {a.blurb}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-base" aria-hidden>
+                    {identityEmoji(winner.clientId, agents)}
+                  </span>
+                  <span className="max-w-[8rem] truncate text-sm font-medium">{winner.name}</span>
+                </span>
+                <span className="w-12 text-right text-sm font-bold tabular-nums text-neutral-300">
+                  {winner.score}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 

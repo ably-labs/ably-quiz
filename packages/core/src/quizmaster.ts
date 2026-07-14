@@ -16,6 +16,7 @@ import {
   type AnswerLogEntry,
   type Choice,
   type ControlMessage,
+  type CounterfactualPayload,
   type Phase,
   type QuestionDef,
   type QuizConfig,
@@ -25,6 +26,7 @@ import {
   counterfactual,
   getAlgo,
   GRACE_MS,
+  listAlgos,
   recomputeStandings,
   scoreQuestion,
   type Standing,
@@ -252,6 +254,28 @@ export class Quizmaster {
   /** Ranked standings under every algorithm — the analysis payload (§B2.6). */
   getCounterfactual(): Record<string, Standing[]> {
     return counterfactual(this.log, this.limitOf, this.deps.config.streakEnabled);
+  }
+
+  /**
+   * The "by the way…" payload (§S5.1): counterfactual standings under every
+   * algorithm, name/kind-resolved and trimmed to the top `topN`. The host
+   * publishes this at `analysis` so /screen · /play · host can show how the
+   * podium would shift under different scoring rules.
+   */
+  buildCounterfactual(topN = 3): CounterfactualPayload {
+    const cf = counterfactual(this.log, this.limitOf, this.deps.config.streakEnabled);
+    const algos = listAlgos().map(({ id, label, blurb }) => ({
+      id,
+      label,
+      blurb,
+      top: (cf[id] ?? []).slice(0, topN).map((s) => ({
+        clientId: s.clientId,
+        name: this.names.get(s.clientId) ?? s.clientId,
+        kind: kindFromClientId(s.clientId),
+        score: s.score,
+      })),
+    }));
+    return { activeAlgoId: this.deps.config.scoringAlgoId, algos };
   }
 
   // --- internals -----------------------------------------------------------

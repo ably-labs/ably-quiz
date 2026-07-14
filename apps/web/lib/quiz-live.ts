@@ -7,10 +7,12 @@ import {
   answersChannel,
   mainChannel,
   parseControlMessage,
+  parseCounterfactual,
   type Broadcaster,
   type Choice,
   type ControlHistoryEntry,
   type ControlMessage,
+  type CounterfactualPayload,
   type InboundAnswer,
   type Phase,
   type QuizConfig,
@@ -18,6 +20,9 @@ import {
   type ScoreboardEntry,
   type Tallies,
 } from '@ably-quiz/core';
+
+/** Event name for the one-shot counterfactual payload on the main channel (§S5.1). */
+export const COUNTERFACTUAL_EVENT = 'counterfactual';
 
 const EMPTY_TALLIES: Tallies = { A: 0, B: 0, C: 0, D: 0 };
 
@@ -228,6 +233,28 @@ export async function loadAnswerHistory(answers: Ably.RealtimeChannel): Promise<
   return (await pageAll(answers))
     .filter((m) => m.name === 'answer')
     .map((m) => ({ clientId: m.clientId ?? '', data: m.data, serverTs: m.timestamp ?? 0 }));
+}
+
+/** Host publishes the "by the way…" counterfactual once, at `analysis` (§S5.1). */
+export async function publishCounterfactual(
+  main: Ably.RealtimeChannel,
+  payload: CounterfactualPayload,
+): Promise<void> {
+  await main.publish(COUNTERFACTUAL_EVENT, payload);
+}
+
+/** Latest counterfactual from main-channel history — for a screen/player that
+ *  joins (or reloads) after the payload was published. Newest wins. */
+export async function loadCounterfactual(
+  main: Ably.RealtimeChannel,
+): Promise<CounterfactualPayload | null> {
+  let latest: CounterfactualPayload | null = null;
+  for (const m of await pageAll(main)) {
+    if (m.name !== COUNTERFACTUAL_EVENT) continue;
+    const payload = parseCounterfactual(m.data);
+    if (payload) latest = payload; // forwards order → last match is newest
+  }
+  return latest;
 }
 
 export { answersChannel, mainChannel, INITIAL_STATE };

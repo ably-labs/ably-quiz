@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AnswerButtons,
   Countdown,
+  CounterfactualPanel,
   identityEmoji,
   QuestionCard,
   Scoreboard,
@@ -220,6 +221,9 @@ export default function PlayPage() {
               highlightId={conn?.clientId}
             />
           </div>
+          {view.counterfactual && (
+            <CounterfactualPanel payload={view.counterfactual} agents={view.config?.agents} />
+          )}
         </div>
       )}
     </main>

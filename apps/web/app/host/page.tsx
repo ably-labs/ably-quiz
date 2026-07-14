@@ -4,7 +4,14 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { BrandMark } from '@/components/BrandMark';
 import { Lobby } from '@/components/Lobby';
-import { Countdown, LETTERS, QuestionCard, Scoreboard, TallyBars } from '@/components/quiz';
+import {
+  Countdown,
+  CounterfactualPanel,
+  LETTERS,
+  QuestionCard,
+  Scoreboard,
+  TallyBars,
+} from '@/components/quiz';
 import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
 import { useAbly } from '@/hooks/useAbly';
 import { useAgentHealth, type HealthState } from '@/hooks/useAgentHealth';
@@ -21,8 +28,18 @@ export default function HostPage() {
   const mcpAuth = useMcpAuth(typeof quizId === 'string' ? quizId : null);
   const agentSlugs = useMemo(() => quiz?.config.agents?.map((a) => a.slug) ?? [], [quiz]);
   const health = useAgentHealth(agentSlugs);
-  const { state, correct, question, live, controls, answersIn, expectedAnswerers, busy, members } =
-    useHostQuiz(conn, quiz, mcpAuth.token);
+  const {
+    state,
+    correct,
+    question,
+    live,
+    controls,
+    answersIn,
+    expectedAnswerers,
+    busy,
+    members,
+    counterfactual,
+  } = useHostQuiz(conn, quiz, mcpAuth.token);
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -155,6 +172,13 @@ export default function HostPage() {
             Final standings
           </h2>
           <Scoreboard scoreboard={live.scoreboard} limit={12} agents={quiz.config.agents} />
+          {counterfactual && (
+            <CounterfactualPanel
+              payload={counterfactual}
+              agents={quiz.config.agents}
+              className="mt-4"
+            />
+          )}
         </section>
       )}
 
