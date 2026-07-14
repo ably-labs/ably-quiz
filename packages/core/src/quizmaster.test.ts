@@ -144,6 +144,21 @@ describe('quizmaster — question loop & scoring', () => {
     expect(store.scoreboard.get('p:priya')).toMatchObject({ kind: 'human' });
   });
 
+  it('heals a published scoreboard name when the display name arrives after the answer', async () => {
+    // The host recover/HMR race: an answer is scored (publishing an entry named
+    // by the raw clientId) before presence has reported the player's nickname.
+    // A late setDisplayName must re-write the entry so the stale id doesn't stick.
+    const { qm, broadcaster, store } = makeQuizmaster();
+    qm.init();
+    await qm.askNext(); // Q0 open (correct 'A')
+    const t0 = broadcaster.control.at(-1)!.serverTs;
+    qm.ingest({ clientId: 'p:x', data: { idx: 0, choice: 'A' }, serverTs: t0 + 500 });
+    expect(store.scoreboard.get('p:x')!.name).toBe('p:x'); // raw id, presence not yet in
+
+    qm.setDisplayName('p:x', 'Matt');
+    expect(store.scoreboard.get('p:x')!.name).toBe('Matt'); // healed
+  });
+
   it('ignores answers outside the open question (wrong idx / before asking / after reveal)', async () => {
     const { qm, broadcaster } = makeQuizmaster();
     qm.init();

@@ -113,9 +113,16 @@ export class Quizmaster {
     return this.correctByIdx.get(idx);
   }
 
-  /** Record a display name (from lobby presence) for scoreboard entries. */
+  /** Record a display name (from lobby presence) for scoreboard entries. If the
+   *  name actually changes for a client that already has a published scoreboard
+   *  entry, heal that entry — a host recover/HMR rebuild can score an answer
+   *  (publishing an entry named by the raw clientId, e.g. "p:wy6ca4n0") before
+   *  presence has reported that player's chosen nickname; without this re-write
+   *  the stale raw id would stick on the board (§S5.2). */
   setDisplayName(clientId: string, name: string): void {
+    const prev = this.names.get(clientId);
     this.names.set(clientId, name);
+    if (name !== prev && this.scores.has(clientId)) this.writeScoreboardEntry(clientId);
   }
 
   // --- Host-driven question loop -------------------------------------------
