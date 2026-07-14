@@ -30,6 +30,12 @@ export default function HostPage() {
   const mcpAuth = useMcpAuth(typeof quizId === 'string' ? quizId : null);
   const agentSlugs = useMemo(() => quiz?.config.agents?.map((a) => a.slug) ?? [], [quiz]);
   const health = useAgentHealth(agentSlugs);
+  // Agents that failed the preflight: greyed out in the roster + excluded from
+  // the answer count / turn-firing, so a dead model can't stall the quiz (§S5.2).
+  const unavailable = useMemo(
+    () => new Set(health.results.filter((r) => !r.ok).map((r) => r.slug)),
+    [health.results],
+  );
   const {
     state,
     correct,
@@ -41,7 +47,7 @@ export default function HostPage() {
     busy,
     members,
     counterfactual,
-  } = useHostQuiz(conn, quiz, mcpAuth.token);
+  } = useHostQuiz(conn, quiz, mcpAuth.token, unavailable);
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
   if (quizId === null) return <Centered>No quiz specified.</Centered>;
@@ -84,8 +90,12 @@ export default function HostPage() {
       </header>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
 
-      <AgentHealthBanner health={health} />
-      <McpAuthBanner mcp={mcpAuth} />
+      {/* Once the quiz starts, keep the chrome quiet: the grounding/health banners
+          only show in the lobby, or in-game when there's a genuine problem (§S5.2). */}
+      {(state.phase === 'lobby' ||
+        health.status === 'issues' ||
+        health.status === 'unconfigured') && <AgentHealthBanner health={health} />}
+      {state.phase === 'lobby' && <McpAuthBanner mcp={mcpAuth} />}
 
       {state.phase === 'lobby' && <HostShare quizId={quizId} />}
 
@@ -186,7 +196,7 @@ export default function HostPage() {
         </section>
       )}
 
-      <Lobby members={members} agents={quiz.config.agents} />
+      <Lobby members={members} agents={quiz.config.agents} unavailable={unavailable} />
     </main>
   );
 }

@@ -12,7 +12,16 @@ import type { Member } from '@/hooks/useAbly';
  *  time, invoked per-question rather than running as a process — and a live dot
  *  marks any that are currently connected (thinking). With no declared roster
  *  (e.g. an older quiz), the Agents column falls back to presence. */
-export function Lobby({ members, agents }: { members: Member[]; agents?: AgentRosterEntry[] }) {
+export function Lobby({
+  members,
+  agents,
+  unavailable,
+}: {
+  members: Member[];
+  agents?: AgentRosterEntry[];
+  /** Agent slugs that failed the host's preflight — shown greyed as "unavailable". */
+  unavailable?: ReadonlySet<string>;
+}) {
   const humans = members.filter((m) => m.kind === 'human');
   const liveAgentSlugs = new Set(
     members.filter((m) => m.kind === 'agent').map((m) => m.clientId.replace(/^a:/, '')),
@@ -40,12 +49,20 @@ export function Lobby({ members, agents }: { members: Member[]; agents?: AgentRo
           count={agents.length}
           emptyHint="humans only — no agents in this quiz"
         >
-          {agents.map((a) => (
-            <Chip key={a.slug} live={liveAgentSlugs.has(a.slug)}>
-              <span className="mr-1">{a.emoji}</span>
-              {a.name}
-            </Chip>
-          ))}
+          {agents.map((a) => {
+            const down = unavailable?.has(a.slug) ?? false;
+            return (
+              <Chip key={a.slug} live={!down && liveAgentSlugs.has(a.slug)} muted={down}>
+                <span className="mr-1">{a.emoji}</span>
+                {a.name}
+                {down && (
+                  <span className="ml-1.5 text-[0.6rem] tracking-wide text-neutral-500 uppercase">
+                    unavailable
+                  </span>
+                )}
+              </Chip>
+            );
+          })}
         </Column>
       ) : (
         <Column
@@ -101,10 +118,17 @@ function Column({
   );
 }
 
-/** One roster pill. `live` shows a green dot — the agent is connected/thinking. */
-function Chip({ children, live }: { children: ReactNode; live?: boolean }) {
+/** One roster pill. `live` shows a green dot (connected/thinking); `muted` greys
+ *  it out (an agent that failed preflight and won't play). */
+function Chip({ children, live, muted }: { children: ReactNode; live?: boolean; muted?: boolean }) {
   return (
-    <li className="flex items-center gap-1.5 rounded-full bg-neutral-800 px-3 py-1 text-sm text-neutral-200">
+    <li
+      className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-sm ${
+        muted
+          ? 'bg-neutral-900 text-neutral-500 opacity-70 grayscale'
+          : 'bg-neutral-800 text-neutral-200'
+      }`}
+    >
       {live && <span className="h-1.5 w-1.5 rounded-full bg-green-500" aria-label="live" />}
       {children}
     </li>

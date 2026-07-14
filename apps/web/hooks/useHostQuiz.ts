@@ -27,6 +27,9 @@ import {
 } from '@/lib/quiz-live';
 import type { StoredQuiz } from '@/lib/quiz-storage';
 
+/** Stable empty default for the optional `unavailable` set (avoids re-renders). */
+const EMPTY_SET: ReadonlySet<string> = new Set();
+
 export type HostControls = {
   next: () => Promise<void>;
   lock: () => Promise<void>;
@@ -46,6 +49,9 @@ export function useHostQuiz(
   /** Host's MCP token (§S6). When present, grounded agents look up Ably
    *  knowledge; passed per turn, never stored server-side. */
   mcpToken: string | null = null,
+  /** Agent slugs that failed the preflight — don't fire their turns, and drop
+   *  them from the expected-answerer count so a dead model can't stall the quiz. */
+  unavailable: ReadonlySet<string> = EMPTY_SET,
 ): {
   state: QuizState;
   /** Correct letter for the current question (host-only readout). */
@@ -285,6 +291,7 @@ export function useHostQuiz(
   const agentSlugs = new Set<string>();
   for (const m of members) if (m.kind === 'agent') agentSlugs.add(m.clientId.replace(/^a:/, ''));
   for (const a of quiz?.config.agents ?? []) agentSlugs.add(a.slug);
+  for (const slug of unavailable) agentSlugs.delete(slug); // don't wait on a failed model
   const expectedAnswerers = humanCount + agentSlugs.size;
   const autoLockedIdx = useRef(-1);
 
@@ -327,6 +334,7 @@ export function useHostQuiz(
       limitMs: question.limitMs,
     };
     for (const a of agents) {
+      if (unavailable.has(a.slug)) continue; // preflight-failed → skip a doomed turn
       void fetch('/api/agent-turn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -338,7 +346,7 @@ export function useHostQuiz(
         }),
       }).catch(() => undefined);
     }
-  }, [state.phase, state.questionIdx, question, quiz, mcpToken]);
+  }, [state.phase, state.questionIdx, question, quiz, mcpToken, unavailable]);
 
   useEffect(() => {
     if (state.phase !== 'locked') return;
