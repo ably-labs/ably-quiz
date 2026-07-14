@@ -9,11 +9,13 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { config as loadEnv } from 'dotenv';
 import { streamAnswer } from './providers';
 import { loadRegistry } from './registry';
 import { ablyDocsStudy, ablyMcpStudy, type StudyContext, type StudyFn } from './study';
 
 const REPO_ROOT = new URL('../../../', import.meta.url);
+const ENV_LOCAL = fileURLToPath(new URL('.env.local', REPO_ROOT));
 const AGENTS_DIR = fileURLToPath(new URL('agents/', REPO_ROOT));
 const DIGEST_PATH = fileURLToPath(new URL('../../core/src/ably-digest.md', import.meta.url));
 
@@ -56,6 +58,7 @@ function makeResearch(): StudyContext['research'] {
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { agent: { type: 'string' } } });
 
+  loadEnv({ path: ENV_LOCAL });
   const digest = (await readOptional(DIGEST_PATH)) ?? '';
   const research = makeResearch();
   const { agents, errors } = await loadRegistry(AGENTS_DIR);
