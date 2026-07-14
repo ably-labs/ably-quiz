@@ -67,18 +67,18 @@ export default function LandingPage() {
   );
 }
 
-/** The hero art. A periodic face-off placeholder holds the space; drop
- *  `apps/web/public/hero.png` in and it paints over the placeholder — no code
- *  change, and a missing file simply leaves the placeholder (no broken glyph). */
+/** The hero art — Carbon (a sweating brain) arm-wrestling Silicon (a smug chip).
+ *  The periodic "C vs Si" placeholder sits behind it as a graceful fallback if
+ *  the asset is ever missing. */
 function HeroArt() {
   return (
     <div className="relative mx-auto aspect-[16/9] w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
       <HeroPlaceholder />
       <div
         className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: 'url(/hero.png)' }}
+        style={{ backgroundImage: 'url(/hero.webp)' }}
         role="img"
-        aria-label="Carbon vs Silicon — humans take on the machines"
+        aria-label="Carbon vs Silicon — a brain arm-wrestles a microchip"
       />
     </div>
   );

@@ -71,7 +71,17 @@ export default function ScreenPage() {
         )}
       </header>
 
-      {view.phase === 'lobby' && <Lobby members={members} agents={view.config?.agents} />}
+      {view.phase === 'lobby' && (
+        <>
+          <div
+            className="mb-8 h-[34vh] w-full rounded-3xl border border-neutral-800 bg-neutral-950 bg-cover bg-center"
+            style={{ backgroundImage: 'url(/hero.webp)' }}
+            role="img"
+            aria-label="Carbon vs Silicon — a brain arm-wrestles a microchip"
+          />
+          <Lobby members={members} agents={view.config?.agents} />
+        </>
+      )}
 
       {inQuestion && (
         <section className="space-y-8">
