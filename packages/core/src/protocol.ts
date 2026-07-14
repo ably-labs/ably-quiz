@@ -94,7 +94,8 @@ export type AgentRosterEntry = z.infer<typeof agentRosterEntrySchema>;
 export const agentThinkingSchema = z.object({
   slug: z.string().min(1),
   idx: z.number().int().nonnegative(),
-  phase: z.enum(['thinking', 'answered']),
+  // `error` = the turn failed (quota/auth/etc.) — surfaced as a warning on screen.
+  phase: z.enum(['thinking', 'answered', 'error']),
   text: z.string(),
   quip: z.string().optional(),
 });

@@ -121,13 +121,18 @@ export function AgentThinkingWall({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {agents.map((a) => {
           const t = thinking[a.slug];
+          const errored = t?.phase === 'error';
           const answered = t?.phase === 'answered';
-          const active = t != null && !answered;
+          const active = t?.phase === 'thinking';
           return (
             <div
               key={a.slug}
               className={`rounded-xl border p-3 transition-colors ${
-                active ? 'border-ably/60 bg-ably/5' : 'border-neutral-800 bg-neutral-900/40'
+                errored
+                  ? 'border-amber-800/60 bg-amber-950/20'
+                  : active
+                    ? 'border-ably/60 bg-ably/5'
+                    : 'border-neutral-800 bg-neutral-900/40'
               }`}
             >
               <div className="mb-1 flex items-center gap-2">
@@ -136,7 +141,9 @@ export function AgentThinkingWall({
                 </span>
                 <span className="truncate font-semibold">{a.name}</span>
                 <span className="ml-auto shrink-0 text-xs tabular-nums">
-                  {answered ? (
+                  {errored ? (
+                    <span className="text-amber-400">⚠️ issue</span>
+                  ) : answered ? (
                     <span className="text-emerald-400">✓ answered</span>
                   ) : active ? (
                     <span className="animate-pulse text-ably">thinking…</span>
@@ -145,9 +152,15 @@ export function AgentThinkingWall({
                   )}
                 </span>
               </div>
-              {t?.text && <p className="line-clamp-3 text-sm text-neutral-400">{t.text}</p>}
-              {answered && t?.quip && (
-                <p className="mt-1 text-sm text-neutral-200 italic">“{t.quip}”</p>
+              {errored ? (
+                <p className="line-clamp-2 text-sm text-amber-300/80">{t?.text || 'failed to answer'}</p>
+              ) : (
+                <>
+                  {t?.text && <p className="line-clamp-3 text-sm text-neutral-400">{t.text}</p>}
+                  {answered && t?.quip && (
+                    <p className="mt-1 text-sm text-neutral-200 italic">“{t.quip}”</p>
+                  )}
+                </>
               )}
             </div>
           );

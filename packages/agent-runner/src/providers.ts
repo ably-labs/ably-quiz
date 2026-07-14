@@ -71,6 +71,24 @@ export function gatewayModel(provider: Provider, model: string): string {
   return `${provider}/${model}`;
 }
 
+/** Preflight: a tiny real gateway call to confirm an agent's model answers —
+ *  catches auth/quota/unknown-model issues before the quiz. Returns null on
+ *  success, else the (short) error message. */
+export async function pingModel(provider: Provider, model: string): Promise<string | null> {
+  try {
+    const client = new OpenAI({ apiKey: process.env.AI_GATEWAY_API_KEY, baseURL: GATEWAY_BASE_URL });
+    await client.chat.completions.create({
+      model: gatewayModel(provider, model),
+      max_tokens: 4,
+      messages: [{ role: 'user', content: 'ping' }],
+    });
+    return null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.slice(0, 200);
+  }
+}
+
 async function streamViaGateway(args: StreamArgs): Promise<StreamResult> {
   const client = new OpenAI({
     apiKey: process.env.AI_GATEWAY_API_KEY,

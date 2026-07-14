@@ -6,6 +6,7 @@ import { Lobby } from '@/components/Lobby';
 import { Countdown, LETTERS, QuestionCard, Scoreboard, TallyBars } from '@/components/quiz';
 import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
 import { useAbly } from '@/hooks/useAbly';
+import { useAgentHealth, type HealthState } from '@/hooks/useAgentHealth';
 import { useHostQuiz } from '@/hooks/useHostQuiz';
 import { useMcpAuth, type McpAuth } from '@/hooks/useMcpAuth';
 import { useQuizId } from '@/hooks/useQuizId';
@@ -17,6 +18,8 @@ export default function HostPage() {
   const params = typeof quizId === 'string' && quiz ? { quizId, role: 'host' as const } : null;
   const { status, conn, error } = useAbly(params);
   const mcpAuth = useMcpAuth(typeof quizId === 'string' ? quizId : null);
+  const agentSlugs = useMemo(() => quiz?.config.agents?.map((a) => a.slug) ?? [], [quiz]);
+  const health = useAgentHealth(agentSlugs);
   const { state, correct, question, live, controls, answersIn, expectedAnswerers, busy, members } =
     useHostQuiz(conn, quiz, mcpAuth.token);
 
@@ -60,6 +63,7 @@ export default function HostPage() {
       </header>
       {error && <p className="mb-4 text-sm text-red-400">⚠️ {error}</p>}
 
+      <AgentHealthBanner health={health} />
       <McpAuthBanner mcp={mcpAuth} />
 
       {showQuestion && (
@@ -155,6 +159,67 @@ export default function HostPage() {
       <Lobby members={members} agents={quiz.config.agents} />
     </main>
   );
+}
+
+/** Agent preflight: a tiny gateway call per agent so a quota/auth/model problem
+ *  is visible before the quiz, and re-checkable. Only shown when there's news
+ *  (checking / issues / unconfigured) — a healthy roster stays out of the way. */
+function AgentHealthBanner({ health }: { health: HealthState }) {
+  if (health.status === 'ok') return null;
+  const broken = health.results.filter((r) => !r.ok);
+  const base = 'mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border px-4 py-3 text-sm';
+
+  if (health.status === 'checking') {
+    return (
+      <div className={`${base} border-neutral-800 bg-neutral-900/40 text-neutral-400`}>
+        <span className="animate-pulse">Checking agents…</span>
+      </div>
+    );
+  }
+  if (health.status === 'unconfigured') {
+    return (
+      <div className={`${base} border-amber-800/60 bg-amber-950/30`}>
+        <span className="text-amber-400">⚠️ AI gateway not configured</span>
+        <span className="text-neutral-400">
+          {health.error ?? 'Set AI_GATEWAY_API_KEY in .env.local — agents can’t answer without it.'}
+        </span>
+        <button type="button" onClick={health.recheck} className="ml-auto text-xs text-neutral-400 underline hover:text-neutral-200">
+          re-check
+        </button>
+      </div>
+    );
+  }
+  // issues
+  return (
+    <div className={`${base} border-amber-800/60 bg-amber-950/30`}>
+      <div className="space-y-0.5">
+        <p className="text-amber-400">
+          ⚠️ {broken.length} agent{broken.length === 1 ? '' : 's'} won’t answer
+        </p>
+        <ul className="text-xs text-neutral-400">
+          {broken.map((r) => (
+            <li key={r.slug}>
+              <span className="text-neutral-300">{r.name}</span>: {shortError(r.error)}
+            </li>
+          ))}
+          {health.error && <li>{health.error}</li>}
+        </ul>
+      </div>
+      <button type="button" onClick={health.recheck} className="ml-auto shrink-0 text-xs text-neutral-400 underline hover:text-neutral-200">
+        re-check
+      </button>
+    </div>
+  );
+}
+
+/** Turn a raw provider error into a one-liner a host can act on. */
+function shortError(err?: string): string {
+  if (!err) return 'unavailable';
+  if (/quota|billing|insufficient/i.test(err)) return 'out of credit / quota';
+  if (/rate limit|429/i.test(err)) return 'rate-limited';
+  if (/not found|unknown model|does not exist/i.test(err)) return 'model not available on the gateway';
+  if (/auth|401|invalid.*key/i.test(err)) return 'auth error (check the gateway key)';
+  return err.length > 80 ? `${err.slice(0, 80)}…` : err;
 }
 
 /** MCP grounding auth (§S6). Optional: agents play ungrounded until the host

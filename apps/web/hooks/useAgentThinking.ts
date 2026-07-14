@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 
 export type AgentThinkState = {
-  phase: 'thinking' | 'answered';
+  phase: 'thinking' | 'answered' | 'error';
   text: string;
   quip?: string;
   idx: number;

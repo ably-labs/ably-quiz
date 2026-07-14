@@ -133,7 +133,9 @@ export async function POST(req: Request): Promise<Response> {
   } catch (err) {
     // Log the message (not the token) so grounding failures are diagnosable.
     console.error(`[agent-turn] ${slug} failed (grounded=${grounded}):`, err);
-    emitThinking({ slug, idx: question.idx, phase: 'answered', text: '(failed to answer)' });
+    // Surface as a warning on screen (§ AI-issue visibility, Matt 2026-07-14).
+    const msg = err instanceof Error ? err.message : 'failed to answer';
+    emitThinking({ slug, idx: question.idx, phase: 'error', text: msg.slice(0, 200) });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'answer failed', slug },
       { status: 502 },

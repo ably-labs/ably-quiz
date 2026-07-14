@@ -42,6 +42,9 @@ describe('agent thinking message (§S4.5)', () => {
     expect(
       parseAgentThinking({ slug: 'matt-grok', idx: 0, phase: 'answered', text: '', quip: 'Easy.' }),
     ).toMatchObject({ phase: 'answered', quip: 'Easy.' });
+    expect(
+      parseAgentThinking({ slug: 'matt-gpt', idx: 1, phase: 'error', text: '429 quota' }),
+    ).toMatchObject({ phase: 'error' });
   });
 
   it('rejects an unknown phase or missing fields', () => {
