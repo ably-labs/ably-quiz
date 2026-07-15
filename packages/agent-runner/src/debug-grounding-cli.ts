@@ -8,9 +8,12 @@
 // Two conveniences so it's iterable:
 //   • Token cache — authenticate ONCE; the token is cached (gitignored) and reused
 //     until it expires, so repeat runs skip the browser sign-in.
-//   • Endpoint — targets the NATIVE MCP surface (`/sse?mode=full`), which exposes
-//     the real tools directly (no `searchAblyTools` discovery proxy). Override with
-//     DEBUG_GROUNDING_URL.
+//   • Endpoint — targets the NATIVE MCP surface (`/mcp?mode=full`, Streamable
+//     HTTP), which exposes the real tools directly. Override with DEBUG_GROUNDING_URL.
+//
+// Modes: `<question>` runs connector probes; `--tools` dumps the tool inventory
+// the model sees; `--direct` hits the server with raw JSON-RPC (no Anthropic
+// connector) to measure true per-tool latency + the authoritative tools/list.
 
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -37,10 +40,11 @@ function allowedTools(): string[] {
     .filter(Boolean);
 }
 
-/** Native MCP endpoint (mode=full) — real tools, no discovery proxy. */
+/** Native MCP endpoint (mode=full) — real tools, no discovery proxy. Streamable
+ *  HTTP (`/mcp`), not SSE — the SSE transport looked like it was adding latency. */
 function connectorUrl(rawUrl: string): string {
   if (process.env.DEBUG_GROUNDING_URL) return process.env.DEBUG_GROUNDING_URL;
-  const u = new URL('/sse', new URL(rawUrl).origin);
+  const u = new URL('/mcp', new URL(rawUrl).origin);
   u.searchParams.set('mode', 'full');
   return u.toString();
 }
@@ -187,6 +191,106 @@ async function runProbe(
   }
 }
 
+// --- direct MCP client (raw JSON-RPC, no Anthropic connector in the path) -----
+// Times the SERVER's real tool latency in isolation. If this is low-seconds but
+// the connector path is slow, the overhead is the Anthropic↔worker transport,
+// not the tools. tools/list is also the AUTHORITATIVE tool surface (no model).
+function parseJsonRpc(text: string, ct: string, id: number): { result?: unknown; error?: unknown } {
+  if (ct.includes('text/event-stream')) {
+    const msgs = text
+      .split('\n')
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => {
+        try {
+          return JSON.parse(l.slice(5).trim()) as {
+            id?: number;
+            result?: unknown;
+            error?: unknown;
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((m): m is { id?: number; result?: unknown; error?: unknown } => Boolean(m));
+    return msgs.find((m) => m.id === id) ?? msgs.at(-1) ?? {};
+  }
+  try {
+    return JSON.parse(text) as { result?: unknown; error?: unknown };
+  } catch {
+    return {};
+  }
+}
+
+async function directProbe(mcpUrl: string, token: string, question: string): Promise<void> {
+  console.log(`\n${bold('══ Direct MCP · raw JSON-RPC (no Anthropic connector) ══')}`);
+  console.log(dim(`endpoint: ${mcpUrl}`));
+  let sessionId: string | undefined;
+  let id = 0;
+  const rpc = async (method: string, params: unknown, notify = false) => {
+    const reqId = notify ? 0 : ++id;
+    const t = Date.now();
+    const res = await fetch(mcpUrl, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', ...(notify ? {} : { id: reqId }), method, params }),
+    });
+    const sid = res.headers.get('mcp-session-id');
+    if (sid) sessionId = sid;
+    const ms = Date.now() - t;
+    if (notify) return { ms, status: res.status, result: undefined, error: undefined };
+    const text = await res.text();
+    const parsed = parseJsonRpc(text, res.headers.get('content-type') ?? '', reqId);
+    return { ms, status: res.status, result: parsed.result, error: parsed.error };
+  };
+
+  try {
+    const init = await rpc('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'ably-quiz-debug', version: '0.0.0' },
+    });
+    console.log(
+      `  initialize   ${bold(String(init.ms) + 'ms').padEnd(8)} status=${init.status} ${init.error ? red(JSON.stringify(init.error).slice(0, 160)) : green('ok')}`,
+    );
+    if (init.error || init.status >= 400) return console.log(red('  cannot continue.'));
+    await rpc('notifications/initialized', {}, true);
+
+    const list = await rpc('tools/list', {});
+    const toolz = ((list.result as { tools?: { name: string }[] })?.tools ?? []).map((t) => t.name);
+    console.log(
+      `  tools/list   ${bold(String(list.ms) + 'ms').padEnd(8)} → ${bold(String(toolz.length) + ' tools')}`,
+    );
+    console.log(
+      dim('  ' + (toolz.slice(0, 90).join(', ') || '(none)') + (toolz.length > 90 ? ' …' : '')),
+    );
+
+    const calls: { name: string; args: Record<string, unknown> }[] = [
+      { name: 'getToolCategories', args: {} },
+      { name: 'getAutomaticContext', args: { conversationContext: question } },
+      { name: 'searchAblyTools', args: { query: 'confluence search pages' } },
+    ];
+    console.log(dim('  per-tool latency (direct):'));
+    for (const c of calls) {
+      if (!toolz.includes(c.name)) {
+        console.log(dim(`    · ${c.name} not exposed`));
+        continue;
+      }
+      const r = await rpc('tools/call', { name: c.name, arguments: c.args });
+      const tag = r.error ? red(JSON.stringify(r.error).slice(0, 120)) : green('ok');
+      console.log(
+        `    ${r.error ? red('✗') : green('✓')} ${c.name.padEnd(24)} ${bold((r.ms / 1000).toFixed(1) + 's')}  ${tag}`,
+      );
+    }
+  } catch (err) {
+    console.log(red(`  direct probe failed: ${err instanceof Error ? err.message : err}`));
+  }
+}
+
 async function main(): Promise<void> {
   loadEnv({ path: ENV_LOCAL });
   const rawUrl = process.env.ABLY_MCP_URL;
@@ -199,8 +303,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const tools = allowedTools();
-  const listOnly = process.argv[2] === '--tools';
-  const question = listOnly ? '' : (process.argv[2] ?? 'What is Ably PSDR22 about?');
+  const arg = process.argv[2];
+  const listOnly = arg === '--tools';
+  const directOnly = arg === '--direct';
+  const question =
+    listOnly || directOnly
+      ? (process.argv[3] ?? 'What is Ably PSDR22 about?')
+      : (arg ?? 'What is Ably PSDR22 about?');
   const oauthBase = new URL(rawUrl).origin;
   const connUrl = connectorUrl(rawUrl);
 
@@ -268,6 +377,16 @@ async function main(): Promise<void> {
         `✓ authenticated — cached; ${r.refreshToken ? 'refresh token saved (silent re-auth for hours)' : 'no refresh token issued (≈1h only)'}\n`,
       ),
     );
+  }
+
+  // `--direct` — measure the SERVER's real latency with no Anthropic connector,
+  // and get the authoritative tool surface via tools/list.
+  if (directOnly) {
+    await directProbe(connUrl, token, question);
+    console.log(
+      yellow('\n(direct probe — server latency with NO Anthropic connector in the path)'),
+    );
+    return;
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
