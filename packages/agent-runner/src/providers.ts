@@ -123,6 +123,22 @@ async function streamViaGateway(args: StreamArgs): Promise<StreamResult> {
   return finalize(state, t0);
 }
 
+/**
+ * The MCP connector's `tool_configuration` — present ONLY when an allowlist is
+ * configured. The Anthropic API rejects an EMPTY `allowed_tools` list with a 400
+ * ("mcp_servers: Cannot pass empty list for allowed_tools, disable through the
+ * enabled flag instead"), so with no ABLY_MCP_TOOLS set we omit it entirely and
+ * let the connector expose the server's own tools (the connection URL still
+ * carries `?allowedTools` when that env var IS set). Spread into the connector.
+ */
+export function mcpToolConfiguration(
+  allowedTools: readonly string[],
+): { tool_configuration: { allowed_tools: string[] } } | Record<string, never> {
+  return allowedTools.length > 0
+    ? { tool_configuration: { allowed_tools: [...allowedTools] } }
+    : {};
+}
+
 /** Grounded turn: direct Anthropic Messages API + the remote-MCP connector (the
  *  provider drives the tool loop; we read the streamed text). Needs
  *  ANTHROPIC_API_KEY — the gateway can't carry the connector. */
@@ -142,10 +158,10 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
         mcp_servers: [
           {
             type: 'url',
-            name: 'ably-os',
+            name: 'knowledge',
             url: mcp.url,
             authorization_token: mcp.authorizationToken,
-            tool_configuration: { allowed_tools: [...mcp.allowedTools] },
+            ...mcpToolConfiguration(mcp.allowedTools),
           },
         ],
       },

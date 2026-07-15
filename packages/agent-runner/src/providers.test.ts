@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractAnswer, extractAnswerLoose } from './providers';
+import { extractAnswer, extractAnswerLoose, mcpToolConfiguration } from './providers';
 
 describe('extractAnswer (strict, incremental)', () => {
   it('parses the answer JSON that follows a think-aloud', () => {
@@ -35,5 +35,21 @@ describe('extractAnswerLoose (fallback for malformed JSON)', () => {
 
   it('returns null when there is no choice to recover', () => {
     expect(extractAnswerLoose('I have no idea, sorry.')).toBeNull();
+  });
+});
+
+describe('mcpToolConfiguration (grounding connector allowlist)', () => {
+  // Regression: an EMPTY allowed_tools list makes the Anthropic MCP connector
+  // 400 ("Cannot pass empty list for allowed_tools"), which silently killed
+  // grounding for every Anthropic agent. With no allowlist we must OMIT it.
+  it('omits tool_configuration entirely when the allowlist is empty', () => {
+    expect(mcpToolConfiguration([])).toEqual({});
+    expect('tool_configuration' in mcpToolConfiguration([])).toBe(false);
+  });
+
+  it('includes allowed_tools when an allowlist is configured', () => {
+    expect(mcpToolConfiguration(['search_docs', 'get_page'])).toEqual({
+      tool_configuration: { allowed_tools: ['search_docs', 'get_page'] },
+    });
   });
 });
