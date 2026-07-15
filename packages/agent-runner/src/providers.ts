@@ -8,18 +8,23 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
+import { makeMcpClient, mcpResultText } from './mcp-client';
 import type { Provider } from './schema';
 
 export type Choice = 'A' | 'B' | 'C' | 'D';
 export type AnswerJson = { choice: Choice; confidence: number; quip: string };
 
-/** Remote MCP grounding via the provider's native connector (§S6, Option A).
- *  The provider holds the connection; the host's short-lived read-only token is
- *  passed here per turn and never stored. Only Anthropic wired for now. */
+/** Remote MCP grounding, driven CLIENT-SIDE (§S6.7): we open a direct MCP client
+ *  and run the tool loop ourselves rather than via Anthropic's `mcp_servers`
+ *  connector (whose transport added ~5s/call + 300s stalls). The host's
+ *  short-lived read-only token is passed per turn and never stored. Anthropic
+ *  models only (the loop uses the Anthropic Messages tool API). */
 export type McpConnector = {
+  /** The MCP server endpoint (Streamable HTTP, e.g. `…/mcp?mode=full`). */
   url: string;
   authorizationToken: string;
-  /** Tools EXPOSED to the model (not searchAblyTools — the catalog is pre-injected). */
+  /** Tools the model may use — the FAST ones (e.g. getAutomaticContext,
+   *  getContextDetail); anything unlisted is filtered out before the model sees it. */
   allowedTools: readonly string[];
 };
 
@@ -35,11 +40,6 @@ export type StreamArgs = {
   /** When set, ground this turn against a remote MCP server (Anthropic only). */
   mcp?: McpConnector;
 };
-
-// The connector is a Messages beta. We use the original connector shape
-// (mcp_servers + tool_configuration.allowed_tools); that's the 2025-04-04 beta.
-// The 2025-11-20 beta requires an additional mcp_toolset entry in `tools`.
-const ANTHROPIC_MCP_BETA = 'mcp-client-2025-04-04';
 
 /** One MCP tool the model called during a grounded turn (§S6.6). input/result
  *  are truncated server-side so a transcript message stays small. */
@@ -135,67 +135,105 @@ async function streamViaGateway(args: StreamArgs): Promise<StreamResult> {
   return finalize(state, t0);
 }
 
-/**
- * The MCP connector's `tool_configuration` — present ONLY when an allowlist is
- * configured. The Anthropic API rejects an EMPTY `allowed_tools` list with a 400
- * ("mcp_servers: Cannot pass empty list for allowed_tools, disable through the
- * enabled flag instead"), so with no ABLY_MCP_TOOLS set we omit it entirely and
- * let the connector expose the server's own tools (the connection URL still
- * carries `?allowedTools` when that env var IS set). Spread into the connector.
- */
-export function mcpToolConfiguration(
-  allowedTools: readonly string[],
-): { tool_configuration: { allowed_tools: string[] } } | Record<string, never> {
-  return allowedTools.length > 0
-    ? { tool_configuration: { allowed_tools: [...allowedTools] } }
-    : {};
-}
-
-// The grounded path goes DIRECT to Anthropic (the gateway can't carry the MCP
-// connector), and the direct API needs full, dated model ids — it 404s on the
-// short gateway aliases some agents use (e.g. `claude-3-haiku`). Normalize the
-// known ones here; an unmapped/retired id just 404s and falls back to ungrounded,
-// same as before. Extend this map (or update the agent's model) as needed.
+// The grounded loop calls Anthropic directly, and the direct API needs full,
+// dated model ids — it 404s on the short gateway aliases some agents use (e.g.
+// `claude-3-haiku`). Normalize the known ones; an unmapped/retired id just 404s
+// and the turn falls back to ungrounded. Extend this (or fix the agent's model).
 const DIRECT_MODEL_ALIASES: Record<string, string> = {
   'claude-3-haiku': 'claude-3-haiku-20240307',
 };
 
-/** Grounded turn: direct Anthropic Messages API + the remote-MCP connector (the
- *  provider drives the tool loop; we read the streamed text). Needs
- *  ANTHROPIC_API_KEY — the gateway can't carry the connector. */
+/** How many model↔tool rounds a grounded turn may take before it must answer.
+ *  Keeps the loop inside the quiz deadline; the fast primer needs ~3 (§S6.7). */
+const GROUNDED_MAX_TURNS = 4;
+const GROUNDED_MAX_TOKENS = 1024;
+
+/**
+ * Grounded turn (§S6.7): a CLIENT-SIDE MCP tool loop. Open a direct MCP client
+ * (fast — ~0.1-0.3s/call), hand the ALLOWLISTED tools to the model as ordinary
+ * tools, and execute each `tool_use` ourselves — feeding results back until the
+ * model produces its answer. This replaces Anthropic's `mcp_servers` connector,
+ * whose transport added ~5s/call and stalled up to 300s. Needs ANTHROPIC_API_KEY.
+ * Throws on setup failure so the route can retry ungrounded; a deadline abort
+ * returns whatever we have.
+ */
 async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> {
   const mcp = args.mcp!;
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const model = DIRECT_MODEL_ALIASES[args.model] ?? args.model;
   const t0 = now();
   const state = newState();
   try {
-    const stream = client.beta.messages.stream(
-      {
-        model: DIRECT_MODEL_ALIASES[args.model] ?? args.model,
-        max_tokens: args.maxTokens,
-        system: args.system,
-        messages: [{ role: 'user', content: args.user }],
-        betas: [ANTHROPIC_MCP_BETA],
-        mcp_servers: [
-          {
-            type: 'url',
-            name: 'knowledge',
-            url: mcp.url,
-            authorization_token: mcp.authorizationToken,
-            ...mcpToolConfiguration(mcp.allowedTools),
-          },
-        ],
-      },
-      args.signal ? { signal: args.signal } : {},
-    );
-    stream.on('text', (delta: string) => onText(state, delta, t0, args));
-    // Capture tool-use blocks as they arrive, so a turn aborted at the deadline
-    // still records the calls it managed to make before we cut it off.
-    stream.on('message', (m) => {
-      const calls = extractToolCalls(m.content);
-      if (calls.length) state.toolCalls = calls;
-    });
-    await stream.finalMessage();
+    const client = makeMcpClient(mcp.url, mcp.authorizationToken, { signal: args.signal });
+    const init = await client.initialize();
+    if (init.error || init.status >= 400) {
+      throw new Error(`MCP initialize failed (status ${init.status})`);
+    }
+    const { tools } = await client.listTools();
+    const allow = mcp.allowedTools;
+    const usable = allow.length ? tools.filter((t) => allow.includes(t.name)) : tools;
+    if (usable.length === 0) throw new Error('MCP server exposed no usable tools');
+    const anthropicTools: Anthropic.Tool[] = usable.map((t) => ({
+      name: t.name,
+      description: (t.description ?? '').slice(0, 1024),
+      input_schema: (t.inputSchema ?? { type: 'object' }) as Anthropic.Tool.InputSchema,
+    }));
+
+    const messages: Anthropic.MessageParam[] = [{ role: 'user', content: args.user }];
+    for (let turn = 0; turn < GROUNDED_MAX_TURNS; turn++) {
+      if (args.signal?.aborted) {
+        state.aborted = true;
+        break;
+      }
+      const res = await anthropic.messages.create(
+        {
+          model,
+          max_tokens: GROUNDED_MAX_TOKENS,
+          system: args.system,
+          messages,
+          tools: anthropicTools,
+        },
+        args.signal ? { signal: args.signal } : {},
+      );
+      if (state.ttftMs === null) state.ttftMs = now() - t0;
+      const text = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+      if (text) {
+        state.text = text;
+        args.onDelta?.(text, text);
+        if (!state.answer) {
+          const parsed = extractAnswer(text);
+          if (parsed) {
+            state.answer = parsed;
+            state.answerMs = now() - t0;
+          }
+        }
+      }
+      messages.push({ role: 'assistant', content: res.content });
+      if (res.stop_reason !== 'tool_use') break;
+      // Execute every tool the model asked for, directly, and feed results back.
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const b of res.content) {
+        if (b.type !== 'tool_use') continue;
+        const r = await client.callTool(b.name, b.input);
+        const out = mcpResultText(r.result);
+        state.toolCalls.push({
+          name: b.name,
+          input: truncate(safeJson(b.input), MAX_TOOL_INPUT),
+          result: truncate(out || (r.error ? safeJson(r.error) : ''), MAX_TOOL_RESULT),
+          isError: Boolean(r.error),
+        });
+        results.push({
+          type: 'tool_result',
+          tool_use_id: b.id,
+          content: out.slice(0, 8000) || 'no content returned',
+          is_error: Boolean(r.error),
+        });
+      }
+      messages.push({ role: 'user', content: results });
+    }
   } catch (err) {
     if (!isAbort(err, args.signal)) throw err;
     state.aborted = true;
@@ -239,11 +277,7 @@ function finalize(s: StreamState, t0: number): StreamResult {
   };
 }
 
-// --- MCP tool-call capture (§S6.6) ------------------------------------------
-// The MCP connector reports each call as an `mcp_tool_use` block and its result
-// as an `mcp_tool_result` block (docs: platform.claude.com/.../mcp-connector).
-// We pull them off the final message so the transcript can show what the agent
-// looked up. input/result are truncated so a transcript message stays small.
+// Tool input/result are truncated so a transcript message stays small (§S6.6).
 const MAX_TOOL_INPUT = 400;
 const MAX_TOOL_RESULT = 600;
 
@@ -257,47 +291,6 @@ function safeJson(v: unknown): string {
   } catch {
     return '';
   }
-}
-function resultText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((c) =>
-        c && typeof c === 'object' && 'text' in c ? String((c as { text: unknown }).text) : '',
-      )
-      .join('');
-  }
-  return '';
-}
-/** Pull MCP tool calls (name, input, result) from a final message's content. */
-export function extractToolCalls(content: unknown): ToolCall[] {
-  if (!Array.isArray(content)) return [];
-  const results = new Map<string, { text: string; isError: boolean }>();
-  for (const raw of content) {
-    const b = raw as { type?: string; tool_use_id?: string; is_error?: boolean; content?: unknown };
-    if (b?.type === 'mcp_tool_result' && typeof b.tool_use_id === 'string') {
-      results.set(b.tool_use_id, { text: resultText(b.content), isError: Boolean(b.is_error) });
-    }
-  }
-  const calls: ToolCall[] = [];
-  for (const raw of content) {
-    const b = raw as {
-      type?: string;
-      id?: string;
-      name?: string;
-      server_name?: string;
-      input?: unknown;
-    };
-    if (b?.type !== 'mcp_tool_use' || typeof b.name !== 'string') continue;
-    const res = typeof b.id === 'string' ? results.get(b.id) : undefined;
-    calls.push({
-      name: b.name,
-      ...(typeof b.server_name === 'string' ? { server: b.server_name } : {}),
-      input: truncate(safeJson(b.input), MAX_TOOL_INPUT),
-      ...(res ? { result: truncate(res.text, MAX_TOOL_RESULT), isError: res.isError } : {}),
-    });
-  }
-  return calls;
 }
 function isAbort(err: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;

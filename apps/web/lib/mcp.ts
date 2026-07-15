@@ -35,14 +35,14 @@ export function mcpAllowedTools(): string[] {
     .filter(Boolean);
 }
 
-/** The MCP connection URL, with the allowlist applied as a query param when the
- *  server supports it (harmless otherwise). Undefined when unconfigured. */
+/** The MCP connection URL for the grounded loop. Requests the native tool surface
+ *  (`mode=full`); the tool ALLOWLIST is applied client-side in the loop (§S6.7),
+ *  not via a query param. Undefined when unconfigured. */
 export function mcpConnectionUrl(): string | undefined {
   if (!MCP_ENDPOINT) return undefined;
   try {
     const url = new URL(MCP_ENDPOINT);
-    const tools = mcpAllowedTools();
-    if (tools.length > 0) url.searchParams.set('allowedTools', tools.join(','));
+    url.searchParams.set('mode', 'full');
     return url.toString();
   } catch {
     return undefined;

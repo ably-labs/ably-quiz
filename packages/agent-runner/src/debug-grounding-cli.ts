@@ -19,6 +19,7 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { config as loadEnv } from 'dotenv';
+import { makeMcpClient, mcpResultText } from './mcp-client';
 import { authorizeMcp, refreshMcpToken, type OAuthResult } from './mcp-oauth';
 
 const REPO_ROOT = new URL('../../../', import.meta.url);
@@ -97,13 +98,6 @@ type Block = {
   text?: string;
 };
 
-function resultText(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content))
-    return content.map((c) => (c as { text?: string })?.text ?? '').join('');
-  return JSON.stringify(content ?? '');
-}
-
 async function runProbe(
   client: Anthropic,
   url: string,
@@ -178,8 +172,7 @@ async function runProbe(
     }
     // Show a peek at the last tool result + the final text.
     const lastResult = content.filter((b) => b.type === 'mcp_tool_result').at(-1);
-    if (lastResult)
-      console.log(dim(`  last result: ${resultText(lastResult.content).slice(0, 200)}`));
+    if (lastResult) console.log(dim(`  last result: ${mcpResultText(lastResult).slice(0, 200)}`));
     const text = content
       .filter((b) => b.type === 'text')
       .map((b) => b.text)
@@ -191,86 +184,9 @@ async function runProbe(
   }
 }
 
-// --- direct MCP client (raw JSON-RPC, no Anthropic connector in the path) -----
-// Times the SERVER's real tool latency in isolation. If this is low-seconds but
-// the connector path is slow, the overhead is the Anthropic↔worker transport,
-// not the tools. tools/list is also the AUTHORITATIVE tool surface (no model).
-function parseJsonRpc(text: string, ct: string, id: number): { result?: unknown; error?: unknown } {
-  if (ct.includes('text/event-stream')) {
-    const msgs = text
-      .split('\n')
-      .filter((l) => l.startsWith('data:'))
-      .map((l) => {
-        try {
-          return JSON.parse(l.slice(5).trim()) as {
-            id?: number;
-            result?: unknown;
-            error?: unknown;
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter((m): m is { id?: number; result?: unknown; error?: unknown } => Boolean(m));
-    return msgs.find((m) => m.id === id) ?? msgs.at(-1) ?? {};
-  }
-  try {
-    return JSON.parse(text) as { result?: unknown; error?: unknown };
-  } catch {
-    return {};
-  }
-}
-
-type McpTool = { name: string; description?: string; inputSchema?: Record<string, unknown> };
-
-/** Minimal Streamable-HTTP MCP client — the reusable core behind `--direct` and the
- *  `--loop` client-side tool loop. Handles the session id, JSON/SSE responses, and
- *  per-call timing. This is the client the real answer path would use. */
-function makeMcpClient(mcpUrl: string, token: string) {
-  let sessionId: string | undefined;
-  let id = 0;
-  const rpc = async (method: string, params: unknown, notify = false) => {
-    const reqId = notify ? 0 : ++id;
-    const t = Date.now();
-    const res = await fetch(mcpUrl, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-        accept: 'application/json, text/event-stream',
-        ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', ...(notify ? {} : { id: reqId }), method, params }),
-    });
-    const sid = res.headers.get('mcp-session-id');
-    if (sid) sessionId = sid;
-    const ms = Date.now() - t;
-    if (notify) return { ms, status: res.status, result: undefined, error: undefined };
-    const text = await res.text();
-    const parsed = parseJsonRpc(text, res.headers.get('content-type') ?? '', reqId);
-    return { ms, status: res.status, result: parsed.result, error: parsed.error };
-  };
-  return {
-    async initialize() {
-      const t = Date.now();
-      const r = await rpc('initialize', {
-        protocolVersion: '2025-06-18',
-        capabilities: {},
-        clientInfo: { name: 'ably-quiz-debug', version: '0.0.0' },
-      });
-      if (!r.error && r.status < 400) await rpc('notifications/initialized', {}, true);
-      return { ms: Date.now() - t, status: r.status, error: r.error };
-    },
-    async listTools() {
-      const r = await rpc('tools/list', {});
-      return { ms: r.ms, tools: (r.result as { tools?: McpTool[] })?.tools ?? [] };
-    },
-    callTool(name: string, args: unknown) {
-      return rpc('tools/call', { name, arguments: args });
-    },
-  };
-}
-
+// The direct MCP client lives in ./mcp-client (shared with the grounded answer
+// path). --direct / --loop below use it to hit the server with no Anthropic
+// connector in the way — the whole point of this tool.
 async function directProbe(mcpUrl: string, token: string): Promise<void> {
   console.log(`\n${bold('══ Direct MCP · raw JSON-RPC (no Anthropic connector) ══')}`);
   console.log(dim(`endpoint: ${mcpUrl}`));
@@ -326,9 +242,7 @@ async function directProbe(mcpUrl: string, token: string): Promise<void> {
         continue;
       }
       const r = await mcp.callTool(c.name, c.args);
-      const txt = resultText((r.result as { content?: unknown })?.content)
-        .replace(/\s+/g, ' ')
-        .trim();
+      const txt = mcpResultText(r.result).replace(/\s+/g, ' ').trim();
       console.log(
         `    ${r.error ? red('✗') : green('✓')} ${c.label.padEnd(20)} ${bold((r.ms / 1000).toFixed(1) + 's')}`,
       );
@@ -400,7 +314,7 @@ async function loopProbe(
     for (const b of res.content) {
       if (b.type !== 'tool_use') continue;
       const r = await mcp.callTool(b.name, b.input);
-      const txt = resultText((r.result as { content?: unknown })?.content);
+      const txt = mcpResultText(r.result);
       console.log(
         `      ${green(b.name)} ${dim(JSON.stringify(b.input).slice(0, 80))} → ${bold((r.ms / 1000).toFixed(1) + 's')} ${r.error ? red('ERR') : ''}`,
       );

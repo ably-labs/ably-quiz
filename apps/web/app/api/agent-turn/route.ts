@@ -137,6 +137,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: msg, slug }, { status: 502 });
   };
 
+  const ungrounded = () => answerFn(agent.manifest, question, { digest, crib: agent.crib });
   let outcome;
   try {
     outcome = await answerFn(agent.manifest, question, {
@@ -146,16 +147,23 @@ export async function POST(req: Request): Promise<Response> {
     });
   } catch (err) {
     if (!grounded) return fail(err);
-    // Grounding failed (e.g. a model that doesn't support the connector) — retry
-    // ungrounded before giving up, so grounding is truly best-effort.
+    // Grounding setup failed (MCP init/tools) — retry ungrounded before giving up,
+    // so grounding is truly best-effort.
     console.warn(`[agent-turn] ${slug} grounded turn failed; retrying ungrounded:`, err);
     try {
-      outcome = await answerFn(agent.manifest, question, {
-        digest,
-        crib: agent.crib,
-      });
+      outcome = await ungrounded();
     } catch (err2) {
       return fail(err2);
+    }
+  }
+  // A grounded turn that produced NO answer (e.g. it ran out of tool-loop turns or
+  // aborted at the deadline) shouldn't score 0 — take one fast ungrounded pass.
+  if (grounded && !outcome.choice) {
+    console.warn(`[agent-turn] ${slug} grounded turn produced no answer; retrying ungrounded`);
+    try {
+      outcome = await ungrounded();
+    } catch (err) {
+      return fail(err);
     }
   }
 
