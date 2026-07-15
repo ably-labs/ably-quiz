@@ -8,6 +8,7 @@ import {
   AgentQuipWall,
   AgentStatusStrip,
   AgentTranscripts,
+  AnsweredProgress,
   CommentaryCard,
   Countdown,
   CounterfactualPanel,
@@ -111,6 +112,12 @@ export default function ScreenPage() {
             <Countdown startedAt={q.startedAt} limitMs={q.limitMs} />
           </div>
           <TallyBars options={q.options} tallies={view.tallies} />
+          <AnsweredProgress
+            agents={view.config?.agents ?? []}
+            thinking={thinking}
+            scoreboard={view.scoreboard}
+            humansPresent={members.filter((m) => m.kind === 'human').length}
+          />
           <TugOfWar scoreboard={view.scoreboard} />
           <AgentStatusStrip agents={view.config?.agents ?? []} thinking={thinking} />
         </section>

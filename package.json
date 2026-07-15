@@ -13,6 +13,7 @@
     "build": "pnpm agents:build && pnpm --filter @ably-quiz/web build",
     "agents:start": "pnpm --filter @ably-quiz/agent-runner start",
     "agents:study": "pnpm --filter @ably-quiz/agent-runner study",
+    "agents:debug-grounding": "pnpm --filter @ably-quiz/agent-runner debug:grounding",
     "agents:build": "pnpm --filter @ably-quiz/agent-runner build:agents",
     "agents:check": "pnpm agents:build && git diff --exit-code apps/web/lib/agent-modules.generated.ts",
     "agent:new": "pnpm --filter @ably-quiz/agent-runner new",

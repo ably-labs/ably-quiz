@@ -162,6 +162,15 @@ export async function POST(req: Request): Promise<Response> {
   // Settle the status to `answered` — status ONLY, no reasoning text and no quip
   // (S5.3). The quip rides the host-subscribe-only answers fan-in below and is
   // released to /screen at reveal; it must never touch this player-readable channel.
+  // Observability for the grounding question (§S6.6): make it obvious in the
+  // server log whether a grounded agent actually called any MCP tools.
+  if (grounded) {
+    const names = outcome.toolCalls.map((c) => c.name).join(', ');
+    console.log(
+      `[agent-turn] ${slug} grounded turn: ${outcome.toolCalls.length} tool call(s)${names ? ` — ${names}` : ' (answered from own knowledge)'}`,
+    );
+  }
+
   emitThinking({ slug, idx: question.idx, phase: 'answered', text: '' });
 
   // Full turn transcript for the end-of-quiz conversation viewer (§S6.6): what

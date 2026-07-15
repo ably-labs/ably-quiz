@@ -10,6 +10,7 @@
   "scripts": {
     "start": "tsx src/cli.ts",
     "study": "tsx src/study-cli.ts",
+    "debug:grounding": "tsx src/debug-grounding-cli.ts",
     "build:agents": "tsx src/build-cli.ts",
     "new": "tsx src/new-cli.ts",
     "validate": "tsx src/validate-cli.ts",

@@ -151,6 +151,15 @@ export function mcpToolConfiguration(
     : {};
 }
 
+// The grounded path goes DIRECT to Anthropic (the gateway can't carry the MCP
+// connector), and the direct API needs full, dated model ids — it 404s on the
+// short gateway aliases some agents use (e.g. `claude-3-haiku`). Normalize the
+// known ones here; an unmapped/retired id just 404s and falls back to ungrounded,
+// same as before. Extend this map (or update the agent's model) as needed.
+const DIRECT_MODEL_ALIASES: Record<string, string> = {
+  'claude-3-haiku': 'claude-3-haiku-20240307',
+};
+
 /** Grounded turn: direct Anthropic Messages API + the remote-MCP connector (the
  *  provider drives the tool loop; we read the streamed text). Needs
  *  ANTHROPIC_API_KEY — the gateway can't carry the connector. */
@@ -162,7 +171,7 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
   try {
     const stream = client.beta.messages.stream(
       {
-        model: args.model,
+        model: DIRECT_MODEL_ALIASES[args.model] ?? args.model,
         max_tokens: args.maxTokens,
         system: args.system,
         messages: [{ role: 'user', content: args.user }],

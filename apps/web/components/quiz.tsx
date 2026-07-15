@@ -215,6 +215,48 @@ export function AgentStatusStrip({
   );
 }
 
+/** Live "who's answered" readout for the big screen while a question is open
+ *  (§S6.7): Carbon (humans) vs Silicon (agents), answered-so-far / in-play. Human
+ *  answers come from the scoreboard's per-question `answered` flag; agent answers
+ *  from the status hook (`answered` phase). Gives the room a sense of the race
+ *  before the reveal, without exposing any answer. */
+export function AnsweredProgress({
+  agents,
+  thinking,
+  scoreboard,
+  humansPresent,
+}: {
+  agents: AgentRosterEntry[];
+  thinking: Record<string, AgentThinkState>;
+  scoreboard: Record<string, ScoreboardEntry>;
+  /** Human players currently in presence (the denominator for humans). */
+  humansPresent: number;
+}) {
+  const agentsAnswered = agents.filter((a) => thinking[a.slug]?.phase === 'answered').length;
+  const humansAnswered = Object.values(scoreboard).filter(
+    (e) => e.kind === 'human' && e.answered,
+  ).length;
+  if (agents.length === 0 && humansPresent === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm">
+      <span className="flex items-center gap-2">
+        <TeamMark team="carbon" className="h-5 w-5" />
+        <span className="text-neutral-400">
+          <span className="font-bold tabular-nums text-neutral-100">{humansAnswered}</span> /{' '}
+          {humansPresent} human{humansPresent === 1 ? '' : 's'} answered
+        </span>
+      </span>
+      <span className="flex items-center gap-2">
+        <TeamMark team="silicon" className="h-5 w-5" />
+        <span className="text-neutral-400">
+          <span className="font-bold tabular-nums text-neutral-100">{agentsAnswered}</span> /{' '}
+          {agents.length} agent{agents.length === 1 ? '' : 's'} answered
+        </span>
+      </span>
+    </div>
+  );
+}
+
 /** Agents' one-liners at reveal (§S5.3). Quips come from the reveal-published
  *  `agent-quips` payload (host-mediated off the answers fan-in) — NOT the agent
  *  status channels, which carry status only mid-question to avoid leaking the
@@ -463,7 +505,7 @@ function AgentTurnCard({ turn: e }: { turn: AgentTranscript }) {
           <p className="text-sm text-neutral-300 italic">{e.reasoning}</p>
         </div>
       )}
-      {e.toolCalls.length > 0 && (
+      {e.toolCalls.length > 0 ? (
         <div className="mb-2">
           <p className="mb-1 text-xs tracking-wide text-neutral-500 uppercase">
             Tool calls · {e.toolCalls.length}
@@ -474,7 +516,14 @@ function AgentTurnCard({ turn: e }: { turn: AgentTranscript }) {
             ))}
           </div>
         </div>
-      )}
+      ) : e.grounded ? (
+        // Grounded but no tools called — make that explicit rather than showing
+        // nothing, so it's clear the agent answered from its own knowledge.
+        <p className="mb-2 rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-500">
+          🔌 Grounding was on, but this agent made no tool calls — it answered from its own
+          knowledge.
+        </p>
+      ) : null}
       {e.quip && <p className="mt-2 text-sm text-neutral-400 italic">“{e.quip}”</p>}
     </div>
   );
