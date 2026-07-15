@@ -271,7 +271,7 @@ function makeMcpClient(mcpUrl: string, token: string) {
   };
 }
 
-async function directProbe(mcpUrl: string, token: string, question: string): Promise<void> {
+async function directProbe(mcpUrl: string, token: string): Promise<void> {
   console.log(`\n${bold('══ Direct MCP · raw JSON-RPC (no Anthropic connector) ══')}`);
   console.log(dim(`endpoint: ${mcpUrl}`));
   const mcp = makeMcpClient(mcpUrl, token);
@@ -510,7 +510,7 @@ async function main(): Promise<void> {
   // `--direct` — measure the SERVER's real latency with no Anthropic connector,
   // and get the authoritative tool surface via tools/list.
   if (directOnly) {
-    await directProbe(connUrl, token, question);
+    await directProbe(connUrl, token);
     console.log(
       yellow('\n(direct probe — server latency with NO Anthropic connector in the path)'),
     );
