@@ -35,24 +35,28 @@ const MCP_STUDY_MODEL = 'claude-opus-4-8';
 const MCP_STUDY_SYSTEM =
   'You are a meticulous researcher assembling a quiz crib about Ably. Ground every claim in the read-only Ably knowledge tools you can call; never invent facts.';
 const MCP_CONNECTOR_TOOLS = ['callTool', 'getContext'] as const;
-const DEFAULT_MCP_URL = 'https://your-mcp-server.example.com/mcp';
 
-/** The MCP connector endpoint (the `/mcp` URL). */
-function mcpEndpoint(): string {
-  return process.env.ABLY_MCP_URL || DEFAULT_MCP_URL;
+/** The MCP connector endpoint (the `/mcp` URL) from ABLY_MCP_URL — no default;
+ *  unset ⇒ MCP study is unavailable and those agents skip gracefully. */
+function mcpEndpoint(): string | undefined {
+  return process.env.ABLY_MCP_URL;
 }
-/** The OAuth base origin (endpoints hang off it), derived from the MCP URL. */
-function mcpOAuthBase(): string {
+/** The OAuth base origin (endpoints hang off it), or undefined when unconfigured. */
+function mcpOAuthBase(): string | undefined {
+  const url = mcpEndpoint();
+  if (!url) return undefined;
   try {
-    return new URL(mcpEndpoint()).origin;
+    return new URL(url).origin;
   } catch {
-    return new URL(DEFAULT_MCP_URL).origin;
+    return undefined;
   }
 }
 
-/** A bound `research` hook — grounds one study call through the MCP connector. */
+/** A bound `research` hook — grounds one study call through the MCP connector.
+ *  Only built once a token is obtained, which requires ABLY_MCP_URL. */
 function makeResearch(token: string): NonNullable<StudyContext['research']> {
   const url = mcpEndpoint();
+  if (!url) throw new Error('ABLY_MCP_URL is not set'); // guarded by obtainMcpToken
   return async (instruction: string) => {
     const res = await streamAnswer({
       provider: 'anthropic',
@@ -75,6 +79,10 @@ function makeResearch(token: string): NonNullable<StudyContext['research']> {
  * the caller skips MCP study gracefully) when there's no TTY or auth fails.
  */
 async function obtainMcpToken(): Promise<string | null> {
+  if (!mcpEndpoint()) {
+    console.log('  ably-mcp study needs an MCP server — set ABLY_MCP_URL. Skipping.');
+    return null;
+  }
   const preset = process.env.ABLY_MCP_AUTH;
   if (preset) return preset;
   if (!process.stdin.isTTY) {
@@ -83,10 +91,15 @@ async function obtainMcpToken(): Promise<string | null> {
     );
     return null;
   }
-  console.log('\n🔐 Authenticate with MCP so agents can study (read-only, ~1h token):');
+  const base = mcpOAuthBase();
+  if (!base) {
+    console.log('  ABLY_MCP_URL is not a valid URL — skipping MCP study.');
+    return null;
+  }
+  console.log('\n🔐 Authenticate with your MCP server so agents can study (read-only, ~1h token):');
   try {
     const { accessToken, expiresIn } = await authorizeMcp({
-      base: mcpOAuthBase(),
+      base,
       onAuthorizeUrl: (url) => {
         console.log('\n   Open this link in your browser and sign in:\n');
         console.log(`   ${url}\n`);

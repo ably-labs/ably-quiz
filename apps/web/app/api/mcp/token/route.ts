@@ -4,7 +4,7 @@
 // there only — never persisted server-side, never logged.
 
 import { NextResponse } from 'next/server';
-import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
+import { mcpOrigin } from '@/lib/ably-os';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,9 +29,16 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'missing OAuth exchange fields' }, { status: 400 });
   }
 
-  // SSRF guard: only ever exchange against the configured MCP Worker origin.
+  // SSRF guard: only ever exchange against the configured MCP server origin.
+  const base = mcpOrigin();
+  if (!base) {
+    return NextResponse.json(
+      { error: 'MCP grounding not configured (set ABLY_MCP_URL)' },
+      { status: 501 },
+    );
+  }
   try {
-    if (new URL(tokenEndpoint).origin !== new URL(ABLY_OS_MCP_BASE).origin) {
+    if (new URL(tokenEndpoint).origin !== new URL(base).origin) {
       return NextResponse.json({ error: 'tokenEndpoint origin not allowed' }, { status: 400 });
     }
   } catch {

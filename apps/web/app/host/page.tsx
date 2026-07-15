@@ -16,7 +16,6 @@ import {
   TallyBars,
   TeamMark,
 } from '@/components/quiz';
-import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
 import { useAbly } from '@/hooks/useAbly';
 import { useAgentHealth, type HealthState } from '@/hooks/useAgentHealth';
 import { useHostQuiz } from '@/hooks/useHostQuiz';
@@ -30,6 +29,16 @@ export default function HostPage() {
   const params = typeof quizId === 'string' && quiz ? { quizId, role: 'host' as const } : null;
   const { status, conn, error } = useAbly(params);
   const mcpAuth = useMcpAuth(typeof quizId === 'string' ? quizId : null);
+  // Is MCP grounding configured on the server? (ABLY_MCP_URL — a server-only var,
+  // so the client asks a tiny status endpoint.) Unset ⇒ hide the grounding UI
+  // entirely: agents just play on their own knowledge (§S6.5).
+  const [groundingAvailable, setGroundingAvailable] = useState(false);
+  useEffect(() => {
+    void fetch('/api/mcp/status')
+      .then((r) => (r.ok ? r.json() : { configured: false }))
+      .then((d: { configured?: boolean }) => setGroundingAvailable(Boolean(d.configured)))
+      .catch(() => undefined);
+  }, []);
   const agentSlugs = useMemo(() => quiz?.config.agents?.map((a) => a.slug) ?? [], [quiz]);
   const health = useAgentHealth(agentSlugs);
   // Agents that failed the preflight: greyed out in the roster + excluded from
@@ -111,7 +120,9 @@ export default function HostPage() {
       {(state.phase === 'lobby' ||
         health.status === 'issues' ||
         health.status === 'unconfigured') && <AgentHealthBanner health={health} />}
-      {state.phase === 'lobby' && <McpAuthBanner mcp={mcpAuth} quizId={quizId} />}
+      {state.phase === 'lobby' && groundingAvailable && (
+        <McpAuthBanner mcp={mcpAuth} quizId={quizId} />
+      )}
 
       {state.phase === 'lobby' && <HostShare quizId={quizId} />}
 
@@ -157,6 +168,7 @@ export default function HostPage() {
         {state.phase === 'lobby' && (
           <StartControls
             hasAgents={(quiz.config.agents?.length ?? 0) > 0}
+            groundingAvailable={groundingAvailable}
             grounded={mcpAuth.status === 'authed'}
             busy={busy}
             disabled={total === 0}
@@ -316,24 +328,6 @@ function McpAuthBanner({ mcp, quizId }: { mcp: McpAuth; quizId: string }) {
     return () => clearTimeout(t);
   }, [mcp.status, quizId]);
 
-  const mcpHost = (() => {
-    try {
-      return new URL(ABLY_OS_MCP_BASE).host;
-    } catch {
-      return ABLY_OS_MCP_BASE;
-    }
-  })();
-  const mcpLink = (
-    <a
-      href={ABLY_OS_MCP_BASE}
-      target="_blank"
-      rel="noreferrer"
-      className="font-mono text-xs text-neutral-500 underline decoration-neutral-700 hover:text-neutral-300"
-    >
-      {mcpHost}
-    </a>
-  );
-
   if (mcp.status === 'authed') {
     if (collapsed) {
       return (
@@ -354,8 +348,8 @@ function McpAuthBanner({ mcp, quizId }: { mcp: McpAuth; quizId: string }) {
     }
     return (
       <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-800/60 bg-emerald-950/30 px-4 py-3 text-sm">
-        <span className="text-emerald-400">✓ Agents grounded with MCP</span>
-        <span className="text-neutral-500">read-only · this session only · via {mcpLink}</span>
+        <span className="text-emerald-400">✓ Agents grounded via MCP</span>
+        <span className="text-neutral-500">read-only · this session only</span>
         <button
           type="button"
           onClick={mcp.signOut}
@@ -373,7 +367,7 @@ function McpAuthBanner({ mcp, quizId }: { mcp: McpAuth; quizId: string }) {
           Optional — agents play fine on their own knowledge without this.
         </p>
         <p className="text-neutral-500">
-          Sign in to let them look up your company knowledge (read-only) via {mcpLink}.
+          Sign in to let them look up your company knowledge over MCP (read-only).
           {mcp.error && <span className="text-red-400"> — {mcp.error}</span>}
         </p>
       </div>
@@ -438,6 +432,7 @@ function HostShare({ quizId }: { quizId: string }) {
  *  agents, or already grounded) starts straight away. */
 function StartControls({
   hasAgents,
+  groundingAvailable,
   grounded,
   busy,
   disabled,
@@ -445,6 +440,7 @@ function StartControls({
   onAuthenticate,
 }: {
   hasAgents: boolean;
+  groundingAvailable: boolean;
   grounded: boolean;
   busy: boolean;
   disabled: boolean;
@@ -452,7 +448,9 @@ function StartControls({
   onAuthenticate: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const needsWarning = hasAgents && !grounded;
+  // Only warn about ungrounded agents when grounding is actually configured —
+  // otherwise there's nothing to authenticate and agents always play ungrounded.
+  const needsWarning = groundingAvailable && hasAgents && !grounded;
 
   // If grounding lands while the warning is up (the host clicked "Authenticate
   // agents"), drop it — the plain Start button now starts straight away, so the

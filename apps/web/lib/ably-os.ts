@@ -6,10 +6,26 @@
 // Auth is Option A: the model provider's native MCP connector holds the remote
 // connection; the host's short-lived, read-only Okta token is passed per turn.
 
-/** The deployed Cloudflare-Worker MCP (no localhost — build against prod per Matt).
- *  Override with ABLY_OS_MCP_URL for the dev/staging Workers. */
-export const ABLY_OS_MCP_BASE =
-  process.env.ABLY_OS_MCP_URL ?? 'https://your-mcp-server.example.com';
+/** MCP grounding endpoint — the operator's own MCP server `/mcp` URL, from the
+ *  `ABLY_MCP_URL` env var. There is NO default: never ship an internal endpoint.
+ *  Unset ⇒ grounding is off and agents answer on their own knowledge. */
+const MCP_ENDPOINT = process.env.ABLY_MCP_URL;
+
+/** The MCP server's OAuth base origin (endpoints hang off it), or undefined when
+ *  unconfigured / unparseable. */
+export function mcpOrigin(): string | undefined {
+  if (!MCP_ENDPOINT) return undefined;
+  try {
+    return new URL(MCP_ENDPOINT).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when an MCP server is configured, i.e. grounding is available. */
+export function isMcpConfigured(): boolean {
+  return Boolean(mcpOrigin());
+}
 
 /** Read-only allowlist — the 61 tools finalized with Matt (PROGRESS.md). Passed on
  *  the connection URL so the Worker enforces it server-side (slim mode). */
@@ -92,9 +108,17 @@ export const ABLY_OS_READ_TOOLS: readonly string[] = [
  *  zero-arg Ably primer that needs no discovery. */
 export const ABLY_OS_CONNECTOR_TOOLS: readonly string[] = ['callTool', 'getContext'];
 
-/** The MCP connection URL with the server-side read-only allowlist applied. */
-export function ablyOsMcpUrl(): string {
-  return `${ABLY_OS_MCP_BASE}/mcp?allowedTools=${ABLY_OS_READ_TOOLS.join(',')}`;
+/** The MCP connection URL with the server-side read-only allowlist applied, or
+ *  undefined when no MCP server is configured. */
+export function ablyOsMcpUrl(): string | undefined {
+  if (!MCP_ENDPOINT) return undefined;
+  try {
+    const url = new URL(MCP_ENDPOINT);
+    url.searchParams.set('allowedTools', ABLY_OS_READ_TOOLS.join(','));
+    return url.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 /** The pre-built tool "registry" injected into agent prompts (grouped, terse) so

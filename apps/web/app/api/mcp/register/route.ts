@@ -7,7 +7,7 @@
 // "none"), and the resulting token lives only in the host's browser.
 
 import { NextResponse } from 'next/server';
-import { ABLY_OS_MCP_BASE } from '@/lib/ably-os';
+import { mcpOrigin } from '@/lib/ably-os';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,14 +19,14 @@ type Endpoints = {
 };
 
 /** RFC 8414 discovery, with a fallback to the workers-oauth-provider defaults. */
-async function discover(): Promise<Endpoints> {
+async function discover(base: string): Promise<Endpoints> {
   const fallback: Endpoints = {
-    authorization_endpoint: `${ABLY_OS_MCP_BASE}/authorize`,
-    token_endpoint: `${ABLY_OS_MCP_BASE}/token`,
-    registration_endpoint: `${ABLY_OS_MCP_BASE}/register`,
+    authorization_endpoint: `${base}/authorize`,
+    token_endpoint: `${base}/token`,
+    registration_endpoint: `${base}/register`,
   };
   try {
-    const res = await fetch(`${ABLY_OS_MCP_BASE}/.well-known/oauth-authorization-server`, {
+    const res = await fetch(`${base}/.well-known/oauth-authorization-server`, {
       headers: { accept: 'application/json' },
     });
     if (!res.ok) return fallback;
@@ -52,7 +52,15 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: 'redirectUri is required' }, { status: 400 });
   }
 
-  const endpoints = await discover();
+  const base = mcpOrigin();
+  if (!base) {
+    return NextResponse.json(
+      { error: 'MCP grounding not configured (set ABLY_MCP_URL)' },
+      { status: 501 },
+    );
+  }
+
+  const endpoints = await discover(base);
 
   const reg = await fetch(endpoints.registration_endpoint, {
     method: 'POST',

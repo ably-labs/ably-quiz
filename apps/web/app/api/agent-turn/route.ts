@@ -97,25 +97,29 @@ export async function POST(req: Request): Promise<Response> {
   // the provider supports the MCP connector (Anthropic), AND we have a direct
   // Anthropic key — grounded turns bypass the gateway because the connector is an
   // Anthropic-Messages feature. Everything else answers through the gateway.
-  // Token is used for this request only — never stored/logged.
+  // Token is used for this request only — never stored/logged. Also requires a
+  // configured MCP server (ABLY_MCP_URL) — no endpoint, no grounding.
+  const mcpUrl = ablyOsMcpUrl();
   const grounded =
     Boolean(mcpToken) &&
+    Boolean(mcpUrl) &&
     agent.manifest.provider === 'anthropic' &&
     Boolean(process.env.ANTHROPIC_API_KEY);
 
   // No `onThinking` here by design (S5.3): the reasoning think-aloud must not
   // reach the player-readable agent channel. The answer core runs without a
   // thinking sink; status comes from the emitThinking calls above/below.
-  const groundingOpts = grounded
-    ? {
-        grounding: groundingInstructions(),
-        mcp: {
-          url: ablyOsMcpUrl(),
-          authorizationToken: mcpToken!,
-          allowedTools: ABLY_OS_CONNECTOR_TOOLS,
-        },
-      }
-    : {};
+  const groundingOpts =
+    grounded && mcpUrl
+      ? {
+          grounding: groundingInstructions(),
+          mcp: {
+            url: mcpUrl,
+            authorizationToken: mcpToken!,
+            allowedTools: ABLY_OS_CONNECTOR_TOOLS,
+          },
+        }
+      : {};
 
   // Run the tested answer core. A throw/timeout scores 0 — never stalls the quiz.
   // Grounding is best-effort: if the connector fails (e.g. an older model that
