@@ -221,9 +221,12 @@ function parseJsonRpc(text: string, ct: string, id: number): { result?: unknown;
   }
 }
 
-async function directProbe(mcpUrl: string, token: string, question: string): Promise<void> {
-  console.log(`\n${bold('══ Direct MCP · raw JSON-RPC (no Anthropic connector) ══')}`);
-  console.log(dim(`endpoint: ${mcpUrl}`));
+type McpTool = { name: string; description?: string; inputSchema?: Record<string, unknown> };
+
+/** Minimal Streamable-HTTP MCP client — the reusable core behind `--direct` and the
+ *  `--loop` client-side tool loop. Handles the session id, JSON/SSE responses, and
+ *  per-call timing. This is the client the real answer path would use. */
+function makeMcpClient(mcpUrl: string, token: string) {
   let sessionId: string | undefined;
   let id = 0;
   const rpc = async (method: string, params: unknown, notify = false) => {
@@ -247,28 +250,45 @@ async function directProbe(mcpUrl: string, token: string, question: string): Pro
     const parsed = parseJsonRpc(text, res.headers.get('content-type') ?? '', reqId);
     return { ms, status: res.status, result: parsed.result, error: parsed.error };
   };
+  return {
+    async initialize() {
+      const t = Date.now();
+      const r = await rpc('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'ably-quiz-debug', version: '0.0.0' },
+      });
+      if (!r.error && r.status < 400) await rpc('notifications/initialized', {}, true);
+      return { ms: Date.now() - t, status: r.status, error: r.error };
+    },
+    async listTools() {
+      const r = await rpc('tools/list', {});
+      return { ms: r.ms, tools: (r.result as { tools?: McpTool[] })?.tools ?? [] };
+    },
+    callTool(name: string, args: unknown) {
+      return rpc('tools/call', { name, arguments: args });
+    },
+  };
+}
 
+async function directProbe(mcpUrl: string, token: string, question: string): Promise<void> {
+  console.log(`\n${bold('══ Direct MCP · raw JSON-RPC (no Anthropic connector) ══')}`);
+  console.log(dim(`endpoint: ${mcpUrl}`));
+  const mcp = makeMcpClient(mcpUrl, token);
   try {
-    const init = await rpc('initialize', {
-      protocolVersion: '2025-06-18',
-      capabilities: {},
-      clientInfo: { name: 'ably-quiz-debug', version: '0.0.0' },
-    });
+    const init = await mcp.initialize();
     console.log(
       `  initialize   ${bold(String(init.ms) + 'ms').padEnd(8)} status=${init.status} ${init.error ? red(JSON.stringify(init.error).slice(0, 160)) : green('ok')}`,
     );
     if (init.error || init.status >= 400) return console.log(red('  cannot continue.'));
-    await rpc('notifications/initialized', {}, true);
-
-    const list = await rpc('tools/list', {});
-    const toolz = ((list.result as { tools?: { name: string }[] })?.tools ?? []).map((t) => t.name);
+    const list = await mcp.listTools();
+    const toolz = list.tools.map((t) => t.name);
     console.log(
       `  tools/list   ${bold(String(list.ms) + 'ms').padEnd(8)} → ${bold(String(toolz.length) + ' tools')}`,
     );
     console.log(
       dim('  ' + (toolz.slice(0, 90).join(', ') || '(none)') + (toolz.length > 90 ? ' …' : '')),
     );
-
     const calls: { name: string; args: Record<string, unknown> }[] = [
       { name: 'getToolCategories', args: {} },
       { name: 'getAutomaticContext', args: { conversationContext: question } },
@@ -287,7 +307,7 @@ async function directProbe(mcpUrl: string, token: string, question: string): Pro
         console.log(dim(`    · ${c.name} not exposed`));
         continue;
       }
-      const r = await rpc('tools/call', { name: c.name, arguments: c.args });
+      const r = await mcp.callTool(c.name, c.args);
       const tag = r.error ? red(JSON.stringify(r.error).slice(0, 120)) : green('ok');
       console.log(
         `    ${r.error ? red('✗') : green('✓')} ${c.name.padEnd(24)} ${bold((r.ms / 1000).toFixed(1) + 's')}  ${tag}`,
@@ -296,6 +316,85 @@ async function directProbe(mcpUrl: string, token: string, question: string): Pro
   } catch (err) {
     console.log(red(`  direct probe failed: ${err instanceof Error ? err.message : err}`));
   }
+}
+
+// --- client-side MCP tool loop (approach A) ----------------------------------
+// The proposed answer-time design: open a direct MCP client, hand the tools to the
+// model as ordinary tools, and execute each tool_use OURSELVES (fast, direct) — no
+// Anthropic connector. Measures the real end-to-end grounded-turn latency.
+async function loopProbe(
+  mcpUrl: string,
+  token: string,
+  question: string,
+  allow: string[],
+): Promise<void> {
+  console.log(`\n${bold('══ Client-side MCP tool loop (approach A) ══')}`);
+  console.log(dim(`question: ${question}`));
+  const mcp = makeMcpClient(mcpUrl, token);
+  const init = await mcp.initialize();
+  console.log(
+    `  initialize   ${bold(String(init.ms) + 'ms')} ${init.error ? red('ERR') : green('ok')}`,
+  );
+  if (init.error || init.status >= 400) return;
+  const { ms: listMs, tools } = await mcp.listTools();
+  const usable = allow.length ? tools.filter((t) => allow.includes(t.name)) : tools;
+  console.log(
+    `  tools/list   ${bold(String(listMs) + 'ms')} → ${tools.length} tools${allow.length ? ` (using ${usable.length}: ${allow.join(', ')})` : ''}`,
+  );
+  const anthropicTools = usable.map((t) => ({
+    name: t.name,
+    description: (t.description ?? '').slice(0, 800),
+    input_schema: (t.inputSchema ?? { type: 'object' }) as Anthropic.Tool.InputSchema,
+  }));
+
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const system =
+    'You are a contestant answering a company quiz question, on a tight timer. Use your knowledge tools to look up the answer before responding — this server is a dispatcher: getAutomaticContext then getContextDetail give a fast primer, or searchAblyTools then callAblyTool to run a specific tool. Keep it to one or two quick lookups, then answer concisely.';
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: question }];
+  const t0 = Date.now();
+  let turn = 0;
+  while (turn++ < 6) {
+    const m0 = Date.now();
+    const res = await client.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system,
+      messages,
+      tools: anthropicTools,
+    });
+    console.log(
+      `  ${dim(`[+${((Date.now() - t0) / 1000).toFixed(1)}s]`)} model turn ${turn}: ${bold(((Date.now() - m0) / 1000).toFixed(1) + 's')} ${dim('stop=' + res.stop_reason)}`,
+    );
+    messages.push({ role: 'assistant', content: res.content });
+    if (res.stop_reason !== 'tool_use') {
+      const text = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+      console.log(green(`  ✓ answered in ${((Date.now() - t0) / 1000).toFixed(1)}s`));
+      console.log(dim('  answer: ' + text.slice(0, 500)));
+      break;
+    }
+    const results: Anthropic.ToolResultBlockParam[] = [];
+    for (const b of res.content) {
+      if (b.type !== 'tool_use') continue;
+      const r = await mcp.callTool(b.name, b.input);
+      const txt = resultText((r.result as { content?: unknown })?.content);
+      console.log(
+        `      ${green(b.name)} ${dim(JSON.stringify(b.input).slice(0, 80))} → ${bold((r.ms / 1000).toFixed(1) + 's')} ${r.error ? red('ERR') : ''}`,
+      );
+      results.push({
+        type: 'tool_result',
+        tool_use_id: b.id,
+        content: txt.slice(0, 4000),
+        is_error: Boolean(r.error),
+      });
+    }
+    messages.push({ role: 'user', content: results });
+  }
+  console.log(
+    bold(`  ── total: ${((Date.now() - t0) / 1000).toFixed(1)}s over ${turn} model turn(s) ──`),
+  );
 }
 
 async function main(): Promise<void> {
@@ -313,8 +412,9 @@ async function main(): Promise<void> {
   const arg = process.argv[2];
   const listOnly = arg === '--tools';
   const directOnly = arg === '--direct';
+  const loopMode = arg === '--loop';
   const question =
-    listOnly || directOnly
+    listOnly || directOnly || loopMode
       ? (process.argv[3] ?? 'What is Ably PSDR22 about?')
       : (arg ?? 'What is Ably PSDR22 about?');
   const oauthBase = new URL(rawUrl).origin;
@@ -392,6 +492,16 @@ async function main(): Promise<void> {
     await directProbe(connUrl, token, question);
     console.log(
       yellow('\n(direct probe — server latency with NO Anthropic connector in the path)'),
+    );
+    return;
+  }
+
+  // `--loop` — the proposed answer-time design: a client-side tool loop that runs
+  // the tools directly. `total` is the real grounded-turn latency to expect.
+  if (loopMode) {
+    await loopProbe(connUrl, token, question, tools);
+    console.log(
+      yellow('\n(client-side tool loop = approach A; `total` is the grounded-turn latency)'),
     );
     return;
   }
