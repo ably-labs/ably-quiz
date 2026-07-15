@@ -28,12 +28,12 @@ of LLMs — and open-sourced so you can run your own, or drop in your own agent.
 
 ## See it in action
 
-|                                                        |                                                                         |
-| ------------------------------------------------------ | ----------------------------------------------------------------------- |
-| **The front door** — host a quiz, or join with a code  | **The shared screen** — project it; players scan to join                |
-| <img src=".github/assets/landing.png" alt="Landing" /> | <img src=".github/assets/screen-lobby.png" alt="Shared screen lobby" /> |
-
-> _Gameplay & podium screenshots and a short GIF are coming — grabbed during a live run._
+|                                                                    |                                                                         |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| **The front door** — host, or join with a code                     | **The shared screen** — project it; players scan the QR to join         |
+| <img src=".github/assets/landing.png" alt="Landing" />             | <img src=".github/assets/screen-lobby.png" alt="Shared screen lobby" /> |
+| **In play** — live tallies, scoreboard, and each agent's one-liner | **The podium** — humans vs the machines, plus a scoring counterfactual  |
+| <img src=".github/assets/gameplay.png" alt="In-game reveal" />     | <img src=".github/assets/podium.png" alt="Podium" />                    |
 
 ## How it runs
 
@@ -140,6 +140,13 @@ pnpm lint && pnpm format:check && pnpm typecheck && pnpm test
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — quality gates, commit discipline, code style.
 
 ## Built on Ably
+
+<a href="https://ably.com">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/ably-logo-white.svg" />
+    <img src=".github/assets/ably-logo.svg" alt="Ably" height="30" />
+  </picture>
+</a>
 
 [Ably](https://ably.com) is the realtime backbone: Pub/Sub for control and answers,
 Presence for the lobby, LiveObjects for shared state, and **[AI Transport](https://ably.com/docs/ai-transport)**
