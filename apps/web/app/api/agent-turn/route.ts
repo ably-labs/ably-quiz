@@ -12,7 +12,12 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { answerQuestion, loadRegistry, type Question } from '@ably-quiz/agent-runner';
-import { agentChannel, answersChannel, type AgentThinkingMessage } from '@ably-quiz/core';
+import {
+  agentChannel,
+  answersChannel,
+  type AgentThinkingMessage,
+  type AgentTranscript,
+} from '@ably-quiz/core';
 import Ably from 'ably';
 import { NextResponse } from 'next/server';
 import { groundingInstructions, mcpAllowedTools, mcpConnectionUrl } from '@/lib/mcp';
@@ -158,6 +163,35 @@ export async function POST(req: Request): Promise<Response> {
   // (S5.3). The quip rides the host-subscribe-only answers fan-in below and is
   // released to /screen at reveal; it must never touch this player-readable channel.
   emitThinking({ slug, idx: question.idx, phase: 'answered', text: '' });
+
+  // Full turn transcript for the end-of-quiz conversation viewer (§S6.6): what
+  // the agent was asked, how it reasoned, the MCP tools it called, its timing and
+  // answer. Rides the host-subscribe-only fan-in (reasoning/tools could reveal
+  // the answer), and the host releases it at reveal — the same wire-safe path as
+  // the quip. Published even for a no-answer/timeout turn so failures show too.
+  const transcript: AgentTranscript = {
+    slug,
+    idx: question.idx,
+    model: agent.manifest.model,
+    provider: agent.manifest.provider,
+    grounded,
+    question: question.prompt,
+    options: question.options,
+    reasoning: outcome.thinking,
+    toolCalls: outcome.toolCalls,
+    choice: outcome.choice,
+    confidence: outcome.confidence,
+    quip: outcome.quip,
+    ttftMs: outcome.ttftMs,
+    answerMs: outcome.answerMs,
+    totalMs: outcome.totalMs,
+    timedOut: outcome.timedOut,
+    forcedGuess: outcome.forcedGuess,
+  };
+  await rest.channels
+    .get(answersChannel(quizId))
+    .publish({ name: 'transcript', data: transcript, clientId: `a:${slug}` })
+    .catch(() => {});
 
   if (!outcome.choice) {
     return NextResponse.json({ slug, answered: false, timedOut: outcome.timedOut });

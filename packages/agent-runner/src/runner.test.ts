@@ -33,6 +33,7 @@ function cannedStream(result: Partial<StreamResult> & { text: string }): {
       totalMs: 15,
       aborted: false,
       answer: null,
+      toolCalls: [],
       ...result,
     });
   };

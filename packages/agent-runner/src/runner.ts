@@ -11,6 +11,7 @@ import {
   type Choice,
   type McpConnector,
   type StreamFn,
+  type ToolCall,
 } from './providers';
 import type { AgentManifest, Question } from './schema';
 
@@ -49,6 +50,10 @@ export type AnswerOutcome = {
   thinking: string;
   ttftMs: number | null;
   answerMs: number | null;
+  /** Wall-clock for the whole turn (ttft/answer are relative to the same start). */
+  totalMs: number | null;
+  /** MCP tools the agent called this turn (grounded turns only; else empty). */
+  toolCalls: ToolCall[];
   /** The stream was aborted at the deadline. */
   timedOut: boolean;
   /** We didn't get a clean strict-JSON answer (loose parse or no answer). */
@@ -107,6 +112,8 @@ export async function answerQuestion(
     thinking,
     ttftMs: res.ttftMs,
     answerMs: res.answerMs,
+    totalMs: res.totalMs,
+    toolCalls: res.toolCalls,
     timedOut: res.aborted,
     forcedGuess,
   };

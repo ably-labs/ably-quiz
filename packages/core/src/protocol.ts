@@ -120,6 +120,52 @@ export const agentQuipsSchema = z.object({
 });
 export type AgentQuips = z.infer<typeof agentQuipsSchema>;
 
+// --- Agent transcript — "view the conversation" (§S6.6) ---------------------
+// A full record of ONE agent's turn on ONE question: the prompt it saw, its
+// think-aloud, any MCP tool calls it made (with truncated input/result), timing,
+// and its answer. Captured server-side in the agent turn, carried on the
+// host-subscribe-only answers fan-in, and released by the host at reveal on the
+// main channel — exactly like quips — so reasoning that could reveal an answer
+// never reaches a player-readable channel while the question is open. The
+// end-of-quiz conversation viewer reads these from main-channel history.
+export const agentToolCallSchema = z.object({
+  name: z.string().min(1),
+  /** The MCP server that served the tool (Anthropic `server_name`). */
+  server: z.string().optional(),
+  /** Truncated JSON of the tool input, and truncated text of its result. */
+  input: z.string().optional(),
+  result: z.string().optional(),
+  isError: z.boolean().optional(),
+});
+export type AgentToolCall = z.infer<typeof agentToolCallSchema>;
+
+export const agentTranscriptSchema = z.object({
+  slug: z.string().min(1),
+  idx: z.number().int().nonnegative(),
+  model: z.string().min(1),
+  provider: z.string().min(1),
+  /** Whether MCP grounding was actually active for this turn. */
+  grounded: z.boolean(),
+  question: z.string(),
+  options: z.array(z.string()),
+  /** The visible think-aloud (reasoning before the answer JSON). */
+  reasoning: z.string(),
+  toolCalls: z.array(agentToolCallSchema),
+  choice: choiceSchema.nullable(),
+  confidence: z.number().min(0).max(1).optional(),
+  quip: z.string().optional(),
+  /** Filled by the host at reveal (it alone knows the correct letter). */
+  correct: z.boolean().optional(),
+  ttftMs: z.number().nullable().optional(),
+  answerMs: z.number().nullable().optional(),
+  totalMs: z.number().nullable().optional(),
+  timedOut: z.boolean().optional(),
+  forcedGuess: z.boolean().optional(),
+  /** Ably server timestamp when the host received the turn on the fan-in. */
+  receivedAt: z.number().optional(),
+});
+export type AgentTranscript = z.infer<typeof agentTranscriptSchema>;
+
 // --- LiveObjects shapes (§B2.3) ---------------------------------------------
 export const quizConfigSchema = z.object({
   scoringAlgoId: z.string().min(1),
@@ -183,6 +229,11 @@ export function parseAgentThinking(data: unknown): AgentThinkingMessage | null {
 
 export function parseAgentQuips(data: unknown): AgentQuips | null {
   const result = agentQuipsSchema.safeParse(data);
+  return result.success ? result.data : null;
+}
+
+export function parseAgentTranscript(data: unknown): AgentTranscript | null {
+  const result = agentTranscriptSchema.safeParse(data);
   return result.success ? result.data : null;
 }
 

@@ -7,9 +7,11 @@ import {
   answersChannel,
   mainChannel,
   parseAgentQuips,
+  parseAgentTranscript,
   parseControlMessage,
   parseCounterfactual,
   type AgentQuips,
+  type AgentTranscript,
   type Broadcaster,
   type Choice,
   type ControlHistoryEntry,
@@ -30,6 +32,11 @@ export const COUNTERFACTUAL_EVENT = 'counterfactual';
  *  The host re-publishes each question's agent one-liners here at reveal — off
  *  the player-readable agent channels — so /screen shows takes without a leak. */
 export const AGENT_QUIPS_EVENT = 'agent-quips';
+
+/** Event name for the reveal-time agent transcript on the main channel (§S6.6).
+ *  The host releases each agent's per-question turn record here at reveal — off
+ *  the host-only fan-in — for the end-of-quiz "view the conversation" viewer. */
+export const AGENT_TRANSCRIPT_EVENT = 'agent-transcript';
 
 const EMPTY_TALLIES: Tallies = { A: 0, B: 0, C: 0, D: 0 };
 
@@ -275,6 +282,18 @@ export async function loadAgentQuips(main: Ably.RealtimeChannel): Promise<AgentQ
     if (payload) latest = payload; // forwards order → last match is newest
   }
   return latest;
+}
+
+/** All agent transcripts from main-channel history — the conversation viewer
+ *  reads these at quiz end and groups them per agent (§S6.6). Chronological. */
+export async function loadAgentTranscripts(main: Ably.RealtimeChannel): Promise<AgentTranscript[]> {
+  const out: AgentTranscript[] = [];
+  for (const m of await pageAll(main)) {
+    if (m.name !== AGENT_TRANSCRIPT_EVENT) continue;
+    const t = parseAgentTranscript(m.data);
+    if (t) out.push(t);
+  }
+  return out;
 }
 
 export { answersChannel, mainChannel, INITIAL_STATE };

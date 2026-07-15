@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { extractAnswer, extractAnswerLoose, mcpToolConfiguration } from './providers';
+import {
+  extractAnswer,
+  extractAnswerLoose,
+  extractToolCalls,
+  mcpToolConfiguration,
+} from './providers';
 
 describe('extractAnswer (strict, incremental)', () => {
   it('parses the answer JSON that follows a think-aloud', () => {
@@ -51,5 +56,53 @@ describe('mcpToolConfiguration (grounding connector allowlist)', () => {
     expect(mcpToolConfiguration(['search_docs', 'get_page'])).toEqual({
       tool_configuration: { allowed_tools: ['search_docs', 'get_page'] },
     });
+  });
+});
+
+describe('extractToolCalls (MCP tool-use blocks → transcript)', () => {
+  it('pairs an mcp_tool_use with its mcp_tool_result by id', () => {
+    const content = [
+      { type: 'text', text: 'let me look that up' },
+      {
+        type: 'mcp_tool_use',
+        id: 'mcptoolu_1',
+        name: 'wikiSearchPages',
+        server_name: 'knowledge',
+        input: { query: 'AI Transport' },
+      },
+      {
+        type: 'mcp_tool_result',
+        tool_use_id: 'mcptoolu_1',
+        is_error: false,
+        content: [{ type: 'text', text: 'AI Transport is Ably’s agent product.' }],
+      },
+    ];
+    expect(extractToolCalls(content)).toEqual([
+      {
+        name: 'wikiSearchPages',
+        server: 'knowledge',
+        input: '{"query":"AI Transport"}',
+        result: 'AI Transport is Ably’s agent product.',
+        isError: false,
+      },
+    ]);
+  });
+
+  it('records a tool_use with no result, and flags errors', () => {
+    const content = [
+      { type: 'mcp_tool_use', id: 'a', name: 'noResult', input: {} },
+      { type: 'mcp_tool_use', id: 'b', name: 'boom', input: { x: 1 } },
+      { type: 'mcp_tool_result', tool_use_id: 'b', is_error: true, content: 'nope' },
+    ];
+    const calls = extractToolCalls(content);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.name).toBe('noResult');
+    expect(calls[0]?.result).toBeUndefined();
+    expect(calls[1]).toMatchObject({ name: 'boom', result: 'nope', isError: true });
+  });
+
+  it('returns [] for non-array or tool-free content', () => {
+    expect(extractToolCalls(undefined)).toEqual([]);
+    expect(extractToolCalls([{ type: 'text', text: 'hi' }])).toEqual([]);
   });
 });

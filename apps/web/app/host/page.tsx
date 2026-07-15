@@ -6,6 +6,7 @@ import { BrandMark } from '@/components/BrandMark';
 import { JoinQr } from '@/components/JoinQr';
 import { Lobby } from '@/components/Lobby';
 import {
+  AgentTranscripts,
   Countdown,
   CounterfactualPanel,
   ExternalLinkIcon,
@@ -58,6 +59,7 @@ export default function HostPage() {
     busy,
     members,
     counterfactual,
+    agentTranscripts,
   } = useHostQuiz(conn, quiz, mcpAuth.token, unavailable);
 
   if (quizId === undefined) return <Centered>Loading…</Centered>;
@@ -224,6 +226,9 @@ export default function HostPage() {
               className="mt-4"
             />
           )}
+          <div className="mt-6">
+            <AgentTranscripts agents={quiz.config.agents ?? []} transcripts={agentTranscripts} />
+          </div>
         </section>
       )}
 

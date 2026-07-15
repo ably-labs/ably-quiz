@@ -41,6 +41,16 @@ export type StreamArgs = {
 // The 2025-11-20 beta requires an additional mcp_toolset entry in `tools`.
 const ANTHROPIC_MCP_BETA = 'mcp-client-2025-04-04';
 
+/** One MCP tool the model called during a grounded turn (§S6.6). input/result
+ *  are truncated server-side so a transcript message stays small. */
+export type ToolCall = {
+  name: string;
+  server?: string;
+  input?: string;
+  result?: string;
+  isError?: boolean;
+};
+
 export type StreamResult = {
   ttftMs: number | null;
   /** When a valid answer JSON could first be parsed (strict). */
@@ -49,6 +59,8 @@ export type StreamResult = {
   text: string;
   answer: AnswerJson | null;
   aborted: boolean;
+  /** MCP tool calls the model made this turn (grounded turns only; else empty). */
+  toolCalls: ToolCall[];
 };
 
 export type StreamFn = (args: StreamArgs) => Promise<StreamResult>;
@@ -168,6 +180,12 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
       args.signal ? { signal: args.signal } : {},
     );
     stream.on('text', (delta: string) => onText(state, delta, t0, args));
+    // Capture tool-use blocks as they arrive, so a turn aborted at the deadline
+    // still records the calls it managed to make before we cut it off.
+    stream.on('message', (m) => {
+      const calls = extractToolCalls(m.content);
+      if (calls.length) state.toolCalls = calls;
+    });
     await stream.finalMessage();
   } catch (err) {
     if (!isAbort(err, args.signal)) throw err;
@@ -183,9 +201,10 @@ type StreamState = {
   answerMs: number | null;
   answer: AnswerJson | null;
   aborted: boolean;
+  toolCalls: ToolCall[];
 };
 function newState(): StreamState {
-  return { text: '', ttftMs: null, answerMs: null, answer: null, aborted: false };
+  return { text: '', ttftMs: null, answerMs: null, answer: null, aborted: false, toolCalls: [] };
 }
 function onText(s: StreamState, delta: string, t0: number, args: StreamArgs): void {
   if (s.ttftMs === null) s.ttftMs = now() - t0;
@@ -207,7 +226,69 @@ function finalize(s: StreamState, t0: number): StreamResult {
     text: s.text,
     answer: s.answer,
     aborted: s.aborted,
+    toolCalls: s.toolCalls,
   };
+}
+
+// --- MCP tool-call capture (§S6.6) ------------------------------------------
+// The MCP connector reports each call as an `mcp_tool_use` block and its result
+// as an `mcp_tool_result` block (docs: platform.claude.com/.../mcp-connector).
+// We pull them off the final message so the transcript can show what the agent
+// looked up. input/result are truncated so a transcript message stays small.
+const MAX_TOOL_INPUT = 400;
+const MAX_TOOL_RESULT = 600;
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+}
+function safeJson(v: unknown): string {
+  if (v == null) return '';
+  try {
+    return typeof v === 'string' ? v : JSON.stringify(v);
+  } catch {
+    return '';
+  }
+}
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((c) =>
+        c && typeof c === 'object' && 'text' in c ? String((c as { text: unknown }).text) : '',
+      )
+      .join('');
+  }
+  return '';
+}
+/** Pull MCP tool calls (name, input, result) from a final message's content. */
+export function extractToolCalls(content: unknown): ToolCall[] {
+  if (!Array.isArray(content)) return [];
+  const results = new Map<string, { text: string; isError: boolean }>();
+  for (const raw of content) {
+    const b = raw as { type?: string; tool_use_id?: string; is_error?: boolean; content?: unknown };
+    if (b?.type === 'mcp_tool_result' && typeof b.tool_use_id === 'string') {
+      results.set(b.tool_use_id, { text: resultText(b.content), isError: Boolean(b.is_error) });
+    }
+  }
+  const calls: ToolCall[] = [];
+  for (const raw of content) {
+    const b = raw as {
+      type?: string;
+      id?: string;
+      name?: string;
+      server_name?: string;
+      input?: unknown;
+    };
+    if (b?.type !== 'mcp_tool_use' || typeof b.name !== 'string') continue;
+    const res = typeof b.id === 'string' ? results.get(b.id) : undefined;
+    calls.push({
+      name: b.name,
+      ...(typeof b.server_name === 'string' ? { server: b.server_name } : {}),
+      input: truncate(safeJson(b.input), MAX_TOOL_INPUT),
+      ...(res ? { result: truncate(res.text, MAX_TOOL_RESULT), isError: res.isError } : {}),
+    });
+  }
+  return calls;
 }
 function isAbort(err: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;

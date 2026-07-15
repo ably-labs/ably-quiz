@@ -7,6 +7,7 @@ import { Lobby } from '@/components/Lobby';
 import {
   AgentQuipWall,
   AgentStatusStrip,
+  AgentTranscripts,
   CommentaryCard,
   Countdown,
   CounterfactualPanel,
@@ -157,6 +158,10 @@ export default function ScreenPage() {
           {view.counterfactual && (
             <CounterfactualPanel payload={view.counterfactual} agents={view.config?.agents} />
           )}
+          <AgentTranscripts
+            agents={view.config?.agents ?? []}
+            transcripts={view.agentTranscripts}
+          />
         </section>
       )}
     </main>

@@ -4,6 +4,7 @@ import {
   controlMessageSchema,
   parseAgentQuips,
   parseAgentThinking,
+  parseAgentTranscript,
   parseCommentary,
   parseAnswerMessage,
   parseControlMessage,
@@ -11,6 +12,39 @@ import {
   quizConfigSchema,
   scoreboardEntrySchema,
 } from './protocol';
+
+describe('agent transcript', () => {
+  const base = {
+    slug: 'matt-opus',
+    idx: 0,
+    model: 'claude-opus-4-8',
+    provider: 'anthropic',
+    grounded: true,
+    question: 'What does AIT stand for?',
+    options: ['Ably Internal Tooling', 'AI Transport'],
+    reasoning: 'The notes mention AI Transport.',
+    toolCalls: [{ name: 'wikiSearchPages', input: '{"q":"AIT"}', result: 'AI Transport' }],
+    choice: 'B',
+  };
+
+  it('parses a full transcript (with tool calls) and keeps optional fields', () => {
+    const t = parseAgentTranscript({ ...base, correct: true, answerMs: 1200 });
+    expect(t?.slug).toBe('matt-opus');
+    expect(t?.toolCalls[0]?.name).toBe('wikiSearchPages');
+    expect(t?.correct).toBe(true);
+    expect(t?.answerMs).toBe(1200);
+  });
+
+  it('accepts a null choice (a no-answer / timed-out turn) with empty tool calls', () => {
+    const t = parseAgentTranscript({ ...base, choice: null, grounded: false, toolCalls: [] });
+    expect(t?.choice).toBeNull();
+    expect(t?.toolCalls).toEqual([]);
+  });
+
+  it('rejects a bad choice', () => {
+    expect(parseAgentTranscript({ ...base, choice: 'Z' })).toBeNull();
+  });
+});
 
 describe('answer message', () => {
   it('accepts a valid answer and an optional confidence', () => {

@@ -2,9 +2,11 @@
 
 import {
   parseAgentQuips,
+  parseAgentTranscript,
   parseControlMessage,
   parseCounterfactual,
   type AgentQuips,
+  type AgentTranscript,
   type Choice,
   type CounterfactualPayload,
 } from '@ably-quiz/core';
@@ -12,10 +14,12 @@ import { useEffect, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 import {
   AGENT_QUIPS_EVENT,
+  AGENT_TRANSCRIPT_EVENT,
   COUNTERFACTUAL_EVENT,
   getMainChannel,
   INITIAL_STATE,
   loadAgentQuips,
+  loadAgentTranscripts,
   loadControlHistory,
   loadCounterfactual,
   subscribeQuizState,
@@ -41,7 +45,19 @@ export type QuizView = LiveQuizState & {
   /** Agents' one-liners for the most recently revealed question, host-released at
    *  reveal (§S5.3). Newest wins; the view gates it to the current revealed idx. */
   agentQuips: AgentQuips | null;
+  /** Every agent's per-question turn record, host-released at reveal (§S6.6). The
+   *  end-of-quiz conversation viewer groups these by agent. */
+  agentTranscripts: AgentTranscript[];
 };
+
+/** Upsert a transcript by (slug, idx) — a live message replaces an earlier copy. */
+export function upsertTranscript(list: AgentTranscript[], t: AgentTranscript): AgentTranscript[] {
+  const i = list.findIndex((x) => x.slug === t.slug && x.idx === t.idx);
+  if (i === -1) return [...list, t];
+  const next = list.slice();
+  next[i] = t;
+  return next;
+}
 
 /** Read-only quiz view for /screen and /play: control broadcasts drive the
  *  question + reveal; LiveObjects drives phase/tallies/scoreboard (+ recovery). */
@@ -51,6 +67,7 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
   const [correct, setCorrect] = useState<Choice | null>(null);
   const [counterfactual, setCounterfactual] = useState<CounterfactualPayload | null>(null);
   const [agentQuips, setAgentQuips] = useState<AgentQuips | null>(null);
+  const [agentTranscripts, setAgentTranscripts] = useState<AgentTranscript[]>([]);
 
   useEffect(() => {
     if (!conn) return;
@@ -100,6 +117,24 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
       if (payload) setAgentQuips((cur) => cur ?? payload);
     });
 
+    // Agent transcripts are host-released at each reveal (§S6.6); catch them live
+    // and re-derive from history so a screen/player that joins at the podium still
+    // gets every agent's conversation. A live copy replaces an older history one.
+    void channel.subscribe(AGENT_TRANSCRIPT_EVENT, (msg) => {
+      const t = parseAgentTranscript(msg.data);
+      if (t) setAgentTranscripts((cur) => upsertTranscript(cur, t));
+    });
+    void loadAgentTranscripts(channel).then((list) => {
+      if (!list.length) return;
+      setAgentTranscripts((cur) => {
+        let next = cur;
+        for (const t of list) {
+          if (!next.some((x) => x.slug === t.slug && x.idx === t.idx)) next = [...next, t];
+        }
+        return next;
+      });
+    });
+
     void subscribeQuizState(channel, setLive).then((u) => {
       unsub = u;
     });
@@ -136,5 +171,5 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
     };
   }, [conn, quizId]);
 
-  return { ...live, question, correct, counterfactual, agentQuips };
+  return { ...live, question, correct, counterfactual, agentQuips, agentTranscripts };
 }

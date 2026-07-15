@@ -1,9 +1,11 @@
 'use client';
 
 import {
+  parseAgentTranscript,
   parseAnswerMessage,
   parseControlMessage,
   Quizmaster,
+  type AgentTranscript,
   type Choice,
   type CounterfactualPayload,
   type InboundAnswer,
@@ -13,14 +15,16 @@ import type * as Ably from 'ably';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Connection } from '@/lib/ably';
 import { presenceToMembers, type Member } from '@/hooks/useAbly';
-import type { QuestionBroadcast } from '@/hooks/useQuizState';
+import { upsertTranscript, type QuestionBroadcast } from '@/hooks/useQuizState';
 import {
   AblyBroadcaster,
   AblyLiveStore,
   AGENT_QUIPS_EVENT,
+  AGENT_TRANSCRIPT_EVENT,
   answersChannel,
   getMainChannel,
   INITIAL_STATE,
+  loadAgentTranscripts,
   loadAnswerHistory,
   loadControlHistory,
   publishCounterfactual,
@@ -70,6 +74,8 @@ export function useHostQuiz(
   members: Member[];
   /** "By the way…" standings under every algorithm — built + published at analysis (§S5.1). */
   counterfactual: CounterfactualPayload | null;
+  /** Every agent's per-question turn record for the conversation viewer (§S6.6). */
+  agentTranscripts: AgentTranscript[];
 } {
   const qmRef = useRef<Quizmaster | null>(null);
   // The writable main channel, stashed so `reveal` can re-publish the gathered
@@ -79,6 +85,10 @@ export function useHostQuiz(
   // Web-only: the quizmaster engine never sees quips (kept out of core). Released
   // to /screen at reveal via `agent-quips` on the main channel (§S5.3).
   const quipsRef = useRef<Map<number, Map<string, string>>>(new Map());
+  // Full per-turn transcripts captured off the host-only fan-in, keyed
+  // idx→slug→transcript. Released at reveal on the main channel for the
+  // conversation viewer (§S6.6) — same wire-safe path as quips.
+  const transcriptsRef = useRef<Map<number, Map<string, AgentTranscript>>>(new Map());
   const [state, setState] = useState<QuizState>({ phase: 'lobby', questionIdx: -1 });
   const [correct, setCorrect] = useState<Choice | null>(null);
   const [question, setQuestion] = useState<QuestionBroadcast | null>(null);
@@ -90,6 +100,9 @@ export function useHostQuiz(
   const [busy, setBusy] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [counterfactual, setCounterfactual] = useState<CounterfactualPayload | null>(null);
+  // Correct-stamped transcripts the host released at reveal, read back off the
+  // main channel (own echoes) for the host's own conversation viewer (§S6.6).
+  const [agentTranscripts, setAgentTranscripts] = useState<AgentTranscript[]>([]);
 
   useEffect(() => {
     if (!conn || !quiz) return;
@@ -151,7 +164,25 @@ export function useHostQuiz(
       }
       byIdx.set(slug, parsed.quip);
     };
+    // Stash an agent's full turn transcript off the fan-in (host-subscribe-only,
+    // so its reasoning/tools never reach players mid-question). Keyed idx→slug;
+    // released at reveal (§S6.6). `transcript` messages are NOT answers — never
+    // ingested by the engine.
+    const captureTranscript = (msg: Ably.Message) => {
+      const t = parseAgentTranscript(msg.data);
+      if (!t) return;
+      let byIdx = transcriptsRef.current.get(t.idx);
+      if (!byIdx) {
+        byIdx = new Map();
+        transcriptsRef.current.set(t.idx, byIdx);
+      }
+      byIdx.set(t.slug, { ...t, receivedAt: msg.timestamp ?? Date.now() });
+    };
     const onAnswer = (msg: Ably.Message) => {
+      if (msg.name === 'transcript') {
+        captureTranscript(msg);
+        return;
+      }
       const raw: InboundAnswer = {
         clientId: msg.clientId ?? '',
         data: msg.data,
@@ -180,16 +211,31 @@ export function useHostQuiz(
       });
     };
 
+    // The host reads back its own reveal-released transcripts (correct-stamped)
+    // off the main channel for its own conversation viewer (§S6.6).
+    const onTranscript = (msg: Ably.Message) => {
+      const t = parseAgentTranscript(msg.data);
+      if (t && !disposed) setAgentTranscripts((cur) => upsertTranscript(cur, t));
+    };
+
     void (async () => {
       // Subscribe FIRST (attaches the channels) so no live message slips through
       // the gap between reading history and going live.
       await answers.subscribe(onAnswer);
       await main.subscribe('control', onControl);
+      await main.subscribe(AGENT_TRANSCRIPT_EVENT, onTranscript);
       await main.presence.subscribe(() => void refresh());
       await subscribeQuizState(main, (s) => {
         if (!disposed) setLive(s);
       });
       await refresh();
+
+      // Recover already-released transcripts so a host refresh mid-quiz keeps the
+      // conversation viewer populated (§S6.6). Live echoes upsert over these.
+      void loadAgentTranscripts(main).then((list) => {
+        if (cancelled || !list.length) return;
+        setAgentTranscripts((cur) => list.reduce(upsertTranscript, cur));
+      });
 
       const [controlHistory, answerHistory] = await Promise.all([
         loadControlHistory(main),
@@ -241,6 +287,7 @@ export function useHostQuiz(
       mainRef.current = null;
       answers.unsubscribe();
       main.unsubscribe('control', onControl);
+      main.unsubscribe(AGENT_TRANSCRIPT_EVENT, onTranscript);
       main.presence.unsubscribe();
     };
   }, [conn, quiz]);
@@ -254,6 +301,21 @@ export function useHostQuiz(
     if (!main || !byIdx || byIdx.size === 0) return;
     const quips = [...byIdx].map(([slug, quip]) => ({ slug, quip }));
     void main.publish(AGENT_QUIPS_EVENT, { idx, quips }).catch(() => {});
+  }, []);
+
+  // Release this question's gathered agent transcripts on the main channel at
+  // reveal (§S6.6) — one message per agent, stamped with `correct` now that the
+  // answer is known. Off the host-only fan-in, so reasoning/tools never leaked
+  // while the question was open. Fire-and-forget; stable (refs only).
+  const publishTranscripts = useCallback((idx: number) => {
+    const main = mainRef.current;
+    const byIdx = transcriptsRef.current.get(idx);
+    if (!main || !byIdx || byIdx.size === 0) return;
+    const correctLetter = qmRef.current?.getCorrect(idx) ?? null;
+    for (const t of byIdx.values()) {
+      const correct = t.choice != null && correctLetter != null && t.choice === correctLetter;
+      void main.publish(AGENT_TRANSCRIPT_EVENT, { ...t, correct }).catch(() => {});
+    }
   }, []);
 
   const run = useCallback(async (fn: (qm: Quizmaster) => Promise<void>) => {
@@ -288,15 +350,17 @@ export function useHostQuiz(
       reveal: () =>
         run(async (qm) => {
           await qm.reveal();
-          // The wire-safe quip release: at reveal, push this question's gathered
-          // agent one-liners to the main channel for /screen (§S5.3).
-          publishQuips(qm.getState().questionIdx);
+          // The wire-safe reveal release: push this question's gathered agent
+          // one-liners (§S5.3) and full transcripts (§S6.6) to the main channel.
+          const idx = qm.getState().questionIdx;
+          publishQuips(idx);
+          publishTranscripts(idx);
         }),
       podium: () => run((qm) => qm.podium()),
       analysis: () => run((qm) => qm.analysis()),
       done: () => run((qm) => qm.done()),
     }),
-    [run, publishQuips],
+    [run, publishQuips, publishTranscripts],
   );
 
   // Fire the commentator once when the quiz enters `analysis` (§B2.9). Standings
@@ -438,5 +502,6 @@ export function useHostQuiz(
     busy,
     members,
     counterfactual,
+    agentTranscripts,
   };
 }

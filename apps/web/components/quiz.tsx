@@ -2,6 +2,8 @@
 
 import type {
   AgentRosterEntry,
+  AgentToolCall,
+  AgentTranscript,
   Choice,
   CounterfactualPayload,
   ScoreboardEntry,
@@ -264,6 +266,235 @@ export function AgentQuipWall({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** End-of-quiz "view the conversation" (§S6.6): per agent, the full record of
+ *  every turn — the prompt it saw, its reasoning, any MCP knowledge-tool calls,
+ *  its latency, and its answer. Reads the transcripts the host released at each
+ *  reveal (off the host-only fan-in, so nothing leaked while a question was
+ *  open). A debugging tool AND a player payoff — "what did the machines do?".
+ *  Renders nothing until at least one transcript has arrived. */
+export function AgentTranscripts({
+  agents,
+  transcripts,
+}: {
+  agents: AgentRosterEntry[];
+  transcripts: AgentTranscript[];
+}) {
+  const [openSlug, setOpenSlug] = useState<string | null>(null);
+  if (transcripts.length === 0) return null;
+
+  const bySlug = new Map<string, AgentTranscript[]>();
+  for (const t of transcripts) {
+    const list = bySlug.get(t.slug) ?? [];
+    list.push(t);
+    bySlug.set(t.slug, list);
+  }
+  const rows = agents.filter((a) => bySlug.has(a.slug));
+  if (rows.length === 0) return null;
+  const open = openSlug ? (agents.find((a) => a.slug === openSlug) ?? null) : null;
+  const openEntries = openSlug
+    ? [...(bySlug.get(openSlug) ?? [])].sort((x, y) => x.idx - y.idx)
+    : [];
+
+  return (
+    <div>
+      <h3 className="mb-1 text-sm tracking-widest text-neutral-500 uppercase">
+        Behind the answers
+      </h3>
+      <p className="mb-3 text-sm text-neutral-500">
+        Open any agent to see what it was asked, how it reasoned, which knowledge tools it called,
+        and how long it took.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map((a) => {
+          const entries = bySlug.get(a.slug) ?? [];
+          const correct = entries.filter((e) => e.correct).length;
+          const tools = entries.reduce((n, e) => n + e.toolCalls.length, 0);
+          return (
+            <button
+              key={a.slug}
+              type="button"
+              onClick={() => setOpenSlug(a.slug)}
+              className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-left transition hover:border-neutral-600 hover:bg-neutral-900"
+            >
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-lg" aria-hidden>
+                  {a.emoji}
+                </span>
+                <span className="truncate font-semibold">{a.name}</span>
+                <span className="ml-auto shrink-0 text-xs text-ably">view →</span>
+              </div>
+              <p className="truncate text-xs text-neutral-500">
+                {correct}/{entries.length} correct
+                {tools > 0 ? ` · ${tools} tool call${tools === 1 ? '' : 's'}` : ''} · {a.model}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+      {open && (
+        <AgentConversationModal
+          agent={open}
+          entries={openEntries}
+          onClose={() => setOpenSlug(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Format a millisecond latency compactly (`820ms` / `3.4s`). */
+function fmtMs(ms: number | null | undefined): string {
+  if (ms == null) return '—';
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** Modal listing one agent's turns across the whole quiz. Closes on backdrop
+ *  click or Escape; the inner panel stops propagation so clicks inside stay. */
+function AgentConversationModal({
+  agent,
+  entries,
+  onClose,
+}: {
+  agent: AgentRosterEntry;
+  entries: AgentTranscript[];
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex overflow-y-auto bg-black/70 p-4 sm:p-8"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${agent.name} — conversation`}
+    >
+      <div
+        className="m-auto w-full max-w-2xl rounded-2xl border border-neutral-700 bg-neutral-900 shadow-2xl ring-1 ring-white/10"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center gap-3 rounded-t-2xl border-b border-neutral-800 bg-neutral-900/95 px-5 py-4 backdrop-blur">
+          <span className="text-2xl" aria-hidden>
+            {agent.emoji}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-bold">{agent.name}</p>
+            <p className="truncate text-xs text-neutral-500">
+              {agent.model} · built by {agent.owner}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto rounded-lg px-2 py-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="space-y-4 p-5">
+          {entries.length === 0 ? (
+            <p className="text-sm text-neutral-500">No turns recorded.</p>
+          ) : (
+            entries.map((e) => <AgentTurnCard key={e.idx} turn={e} />)
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** One question's turn: prompt, options (chosen marked), reasoning, tool calls,
+ *  timing, and the agent's quip — the debug + payoff view for a single answer. */
+function AgentTurnCard({ turn: e }: { turn: AgentTranscript }) {
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-neutral-400">
+          Q{e.idx + 1}
+        </span>
+        {e.correct === true && (
+          <span className="rounded bg-emerald-950 px-1.5 py-0.5 text-emerald-400">✓ correct</span>
+        )}
+        {e.correct === false && (
+          <span className="rounded bg-rose-950 px-1.5 py-0.5 text-rose-400">✗ wrong</span>
+        )}
+        {e.grounded && (
+          <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-ably">grounded</span>
+        )}
+        {e.timedOut && (
+          <span className="rounded bg-amber-950 px-1.5 py-0.5 text-amber-400">timed out</span>
+        )}
+        {e.forcedGuess && (
+          <span className="rounded bg-amber-950/60 px-1.5 py-0.5 text-amber-300">forced guess</span>
+        )}
+        <span className="ml-auto text-neutral-500">answered in {fmtMs(e.answerMs)}</span>
+      </div>
+      <p className="mb-2 font-medium">{e.question}</p>
+      <ul className="mb-3 space-y-1 text-sm">
+        {e.options.map((opt, i) => {
+          const letter = LETTERS[i];
+          const chosen = e.choice === letter;
+          return (
+            <li
+              key={i}
+              className={`flex gap-2 ${chosen ? 'text-neutral-100' : 'text-neutral-500'}`}
+            >
+              <span className="font-mono">{letter})</span>
+              <span>{opt}</span>
+              {chosen && <span className="shrink-0 text-ably">← picked</span>}
+            </li>
+          );
+        })}
+      </ul>
+      {e.reasoning && (
+        <div className="mb-3">
+          <p className="mb-1 text-xs tracking-wide text-neutral-500 uppercase">Reasoning</p>
+          <p className="text-sm text-neutral-300 italic">{e.reasoning}</p>
+        </div>
+      )}
+      {e.toolCalls.length > 0 && (
+        <div className="mb-2">
+          <p className="mb-1 text-xs tracking-wide text-neutral-500 uppercase">
+            Tool calls · {e.toolCalls.length}
+          </p>
+          <div className="space-y-2">
+            {e.toolCalls.map((c, i) => (
+              <AgentToolCallRow key={i} call={c} />
+            ))}
+          </div>
+        </div>
+      )}
+      {e.quip && <p className="mt-2 text-sm text-neutral-400 italic">“{e.quip}”</p>}
+    </div>
+  );
+}
+
+function AgentToolCallRow({ call: c }: { call: AgentToolCall }) {
+  return (
+    <div
+      className={`rounded-lg border p-2 font-mono text-xs ${
+        c.isError ? 'border-rose-900/60 bg-rose-950/20' : 'border-neutral-800 bg-neutral-950'
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-ably">{c.name}</span>
+        {c.isError && <span className="text-rose-400">error</span>}
+      </div>
+      {c.input && <p className="mt-1 break-words text-neutral-500">in: {c.input}</p>}
+      {c.result && (
+        <p className="mt-1 break-words whitespace-pre-wrap text-neutral-400">→ {c.result}</p>
+      )}
     </div>
   );
 }
