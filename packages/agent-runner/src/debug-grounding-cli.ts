@@ -74,24 +74,41 @@ async function runProbe(
 ): Promise<void> {
   console.log(`\n${bold('══ ' + label + ' ══')}`);
   console.log(dim(`user: ${user}`));
+  if (tools.length) console.log(dim(`allowed_tools: ${tools.join(', ')}`));
   const t0 = Date.now();
   try {
-    const msg = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system,
-      messages: [{ role: 'user', content: user }],
-      betas: [ANTHROPIC_MCP_BETA],
-      mcp_servers: [
-        {
-          type: 'url',
-          name: 'knowledge',
-          url,
-          authorization_token: token,
-          ...(tools.length ? { tool_configuration: { allowed_tools: tools } } : {}),
-        },
-      ],
-    } as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming);
+    // Stream with a long timeout: a real dispatcher call (search → execute
+    // against live backends) can take far longer than a plain completion, and a
+    // non-streaming request just times out before we see the tool calls. Print
+    // each tool call the moment it lands, with how long it took — that latency
+    // is the whole question (does grounding fit the quiz's ~18s deadline?).
+    const stream = client.beta.messages.stream(
+      {
+        model: MODEL,
+        max_tokens: 1024,
+        system,
+        messages: [{ role: 'user', content: user }],
+        betas: [ANTHROPIC_MCP_BETA],
+        mcp_servers: [
+          {
+            type: 'url',
+            name: 'knowledge',
+            url,
+            authorization_token: token,
+            ...(tools.length ? { tool_configuration: { allowed_tools: tools } } : {}),
+          },
+        ],
+      },
+      { timeout: 240_000 },
+    );
+    stream.on('streamEvent', (e) => {
+      if (e.type === 'content_block_start' && e.content_block.type === 'mcp_tool_use') {
+        console.log(
+          `    ${dim(`[+${((Date.now() - t0) / 1000).toFixed(1)}s]`)} calling ${green(e.content_block.name)}…`,
+        );
+      }
+    });
+    const msg = await stream.finalMessage();
     const ms = Date.now() - t0;
     console.log(`  ${dim(`took ${(ms / 1000).toFixed(1)}s · stop_reason=${msg.stop_reason}`)}`);
     summarizeToolCalls(msg.content as Block[]);
@@ -155,30 +172,38 @@ async function main(): Promise<void> {
     'What tools do you have available to you right now? List every one by its exact name.',
   );
 
-  // Probe 2 — a real question, told firmly to look it up rather than guess.
+  // Probe 2 — a real question, told firmly to look it up. Measures how long the
+  // full dispatcher path (search → execute against live backends) actually takes.
   await runProbe(
     client,
     url,
     token,
     tools,
-    'Probe 2 · forced lookup',
-    'You are answering a question about the user’s company. You have read-only knowledge-lookup tools available over MCP. You almost certainly do NOT know this from memory, so you MUST call a tool to look it up before answering — do not guess. If your only tool is a dispatcher (e.g. `callTool`), call it with the appropriate underlying tool name and query.',
+    'Probe 2 · forced lookup (full dispatcher)',
+    'You are answering a question about the user’s company. You have read-only knowledge-lookup tools available over MCP. You almost certainly do NOT know this from memory, so you MUST call a tool to look it up before answering — do not guess. If your only tool is a dispatcher (e.g. `callAblyTool` / `searchAblyTools`), use it with the appropriate underlying tool name and query.',
+    question,
+  );
+
+  // Probe 3 — force ONLY the fast `getContext` primer (no slow backend calls), to
+  // see whether a quick, deadline-friendly grounding call is viable for the quiz.
+  await runProbe(
+    client,
+    url,
+    token,
+    ['getContext'],
+    'Probe 3 · fast primer only (getContext)',
+    'You have one tool: `getContext`, a zero-argument primer that returns company context. Call it once, then answer the question using what it returns.',
     question,
   );
 
   console.log(bold('\n── read of the above ──'));
+  console.log(dim('• Probe 1: the server’s real tool surface (it’s a search+dispatch pattern).'));
+  console.log(dim('• Probe 2: how long a full lookup takes. If it’s ≫18s, it can’t run live in a'));
   console.log(
-    dim(
-      '• Probe 1 shows the server’s real tool surface (a `callTool` dispatcher vs. named tools).',
-    ),
+    dim('  quiz turn — deep MCP research belongs at STUDY time (crib), not answer time.'),
   );
   console.log(
-    dim('• Probe 2 shows whether the model CAN + WILL call a tool when told to. 0 calls there'),
-  );
-  console.log(
-    dim(
-      '  means the tools aren’t usable as-presented (dispatcher needs a catalog) or aren’t exposed.',
-    ),
+    dim('• Probe 3: whether the fast `getContext` primer fits a live deadline (a few s).'),
   );
 }
 
