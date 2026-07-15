@@ -289,29 +289,50 @@ async function directProbe(mcpUrl: string, token: string, question: string): Pro
     console.log(
       dim('  ' + (toolz.slice(0, 90).join(', ') || '(none)') + (toolz.length > 90 ? ' …' : '')),
     );
-    const calls: { name: string; args: Record<string, unknown> }[] = [
-      { name: 'getToolCategories', args: {} },
-      { name: 'getAutomaticContext', args: { conversationContext: question } },
-      { name: 'getContextDetail', args: { context: 'about-ably' } },
-      { name: 'searchAblyTools', args: { query: 'confluence search pages' } },
-      // The dispatch calls that stalled 300s via the connector — hit real backends.
+    // Real backend reads (Jira/Confluence/Gong/HubSpot/GitHub) timed directly, with
+    // a peek at the RESULT so we can tell real data from a fast empty/error return.
+    const calls: { label: string; name: string; args: Record<string, unknown> }[] = [
+      { label: 'getToolCategories', name: 'getToolCategories', args: {} },
       {
+        label: 'Confluence search',
         name: 'callAblyTool',
-        args: { toolName: 'confluenceSearchPages', params: { search_term: 'PSDR22' } },
+        args: { toolName: 'confluenceSearchPages', params: { search_term: 'AI Transport' } },
       },
-      { name: 'callAblyTool', args: { toolName: 'jiraListProjects', params: {} } },
+      {
+        label: 'Jira search',
+        name: 'callAblyTool',
+        args: { toolName: 'jiraSearchIssues', params: { text: 'AI Transport', limit: 3 } },
+      },
+      {
+        label: 'Gong (find tool)',
+        name: 'searchAblyTools',
+        args: { query: 'gong calls transcripts' },
+      },
+      {
+        label: 'HubSpot (find tool)',
+        name: 'searchAblyTools',
+        args: { query: 'hubspot deals companies' },
+      },
+      {
+        label: 'GitHub search',
+        name: 'callAblyTool',
+        args: { toolName: 'githubSearchAblyRepositories', params: { query: 'ably-core-mcp' } },
+      },
     ];
-    console.log(dim('  per-tool latency (direct):'));
+    console.log(dim('  backend read latency (direct) + result peek:'));
     for (const c of calls) {
       if (!toolz.includes(c.name)) {
         console.log(dim(`    · ${c.name} not exposed`));
         continue;
       }
       const r = await mcp.callTool(c.name, c.args);
-      const tag = r.error ? red(JSON.stringify(r.error).slice(0, 120)) : green('ok');
+      const txt = resultText((r.result as { content?: unknown })?.content)
+        .replace(/\s+/g, ' ')
+        .trim();
       console.log(
-        `    ${r.error ? red('✗') : green('✓')} ${c.name.padEnd(24)} ${bold((r.ms / 1000).toFixed(1) + 's')}  ${tag}`,
+        `    ${r.error ? red('✗') : green('✓')} ${c.label.padEnd(20)} ${bold((r.ms / 1000).toFixed(1) + 's')}`,
       );
+      console.log(dim('       ' + (txt.slice(0, 200) || '(empty)')));
     }
   } catch (err) {
     console.log(red(`  direct probe failed: ${err instanceof Error ? err.message : err}`));
