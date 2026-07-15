@@ -16,7 +16,7 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
 import { config as loadEnv } from 'dotenv';
-import { authorizeMcp } from './mcp-oauth';
+import { authorizeMcp, refreshMcpToken, type OAuthResult } from './mcp-oauth';
 
 const REPO_ROOT = new URL('../../../', import.meta.url);
 const ENV_LOCAL = fileURLToPath(new URL('.env.local', REPO_ROOT));
@@ -45,26 +45,41 @@ function connectorUrl(rawUrl: string): string {
   return u.toString();
 }
 
-// --- token cache (gitignored; a read-only MCP token, never logged) -----------
-type TokenCache = { base: string; accessToken: string; expiresAt: number };
-function loadCachedToken(base: string): { token: string; expiresAt: number } | null {
+// --- token cache (gitignored; read-only MCP token + refresh material) --------
+// Access tokens are short (~1h), so we also store the refresh token and mint a
+// fresh access token silently — "auth once, test for hours".
+type TokenCache = {
+  base: string;
+  accessToken: string;
+  expiresAt: number;
+  refreshToken?: string;
+  clientId?: string;
+  tokenEndpoint?: string;
+};
+function readCache(): TokenCache | null {
   try {
-    const c = JSON.parse(readFileSync(CACHE_FILE, 'utf8')) as TokenCache;
-    if (c.base === base && c.expiresAt > Date.now() + 60_000) {
-      return { token: c.accessToken, expiresAt: c.expiresAt };
-    }
+    return JSON.parse(readFileSync(CACHE_FILE, 'utf8')) as TokenCache;
   } catch {
-    /* no / invalid / expired cache */
+    return null;
   }
-  return null;
 }
-function saveCachedToken(base: string, accessToken: string, expiresAt: number): void {
+function writeCache(c: TokenCache): void {
   try {
-    writeFileSync(CACHE_FILE, JSON.stringify({ base, accessToken, expiresAt }), { mode: 0o600 });
+    writeFileSync(CACHE_FILE, JSON.stringify(c), { mode: 0o600 });
     chmodSync(CACHE_FILE, 0o600);
   } catch (err) {
     console.warn(dim(`(could not cache token: ${err instanceof Error ? err.message : err})`));
   }
+}
+function cacheFrom(base: string, r: OAuthResult): TokenCache {
+  return {
+    base,
+    accessToken: r.accessToken,
+    expiresAt: Date.now() + r.expiresIn * 1000,
+    ...(r.refreshToken ? { refreshToken: r.refreshToken } : {}),
+    clientId: r.clientId,
+    tokenEndpoint: r.tokenEndpoint,
+  };
 }
 
 type Block = {
@@ -93,6 +108,7 @@ async function runProbe(
   label: string,
   system: string,
   user: string,
+  maxTokens = 1024,
 ): Promise<void> {
   console.log(`\n${bold('══ ' + label + ' ══')}`);
   console.log(dim(`user: ${user}`));
@@ -105,7 +121,7 @@ async function runProbe(
     const stream = client.beta.messages.stream(
       {
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: maxTokens,
         system,
         messages: [{ role: 'user', content: user }],
         betas: [ANTHROPIC_MCP_BETA],
@@ -165,7 +181,7 @@ async function runProbe(
       .map((b) => b.text)
       .join('')
       .trim();
-    if (text) console.log(`  ${dim('answer:')} ${text.slice(0, 400)}`);
+    if (text) console.log(`  ${dim('answer:')} ${text.slice(0, 8000)}`);
   } catch (err) {
     console.log(`  ${red('request failed:')} ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -183,7 +199,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const tools = allowedTools();
-  const question = process.argv[2] ?? 'What is Ably PSDR22 about?';
+  const listOnly = process.argv[2] === '--tools';
+  const question = listOnly ? '' : (process.argv[2] ?? 'What is Ably PSDR22 about?');
   const oauthBase = new URL(rawUrl).origin;
   const connUrl = connectorUrl(rawUrl);
 
@@ -200,16 +217,43 @@ async function main(): Promise<void> {
   if (token) {
     console.log(green('  auth:       ABLY_MCP_AUTH (preset)'));
   } else {
-    const cached = loadCachedToken(oauthBase);
-    if (cached) {
-      token = cached.token;
+    const cached = readCache();
+    if (cached?.base === oauthBase && cached.expiresAt > Date.now() + 60_000) {
+      token = cached.accessToken;
       const mins = Math.round((cached.expiresAt - Date.now()) / 60_000);
       console.log(green(`  auth:       cached token (valid ~${mins} more min) — sign-in skipped`));
+    } else if (
+      cached?.base === oauthBase &&
+      cached.refreshToken &&
+      cached.clientId &&
+      cached.tokenEndpoint
+    ) {
+      // Access token expired — mint a fresh one silently from the refresh token.
+      try {
+        const r = await refreshMcpToken({
+          tokenEndpoint: cached.tokenEndpoint,
+          clientId: cached.clientId,
+          refreshToken: cached.refreshToken,
+        });
+        token = r.accessToken;
+        writeCache(cacheFrom(oauthBase, r));
+        console.log(
+          green(
+            `  auth:       refreshed token silently (valid ~${Math.round(r.expiresIn / 60)} min)`,
+          ),
+        );
+      } catch (err) {
+        console.log(
+          dim(
+            `  auth:       refresh failed (${err instanceof Error ? err.message : err}) — need sign-in`,
+          ),
+        );
+      }
     }
   }
   if (!token) {
-    console.log(bold('\n🔐 Sign in once — the token is cached so later runs skip this:'));
-    const { accessToken, expiresIn } = await authorizeMcp({
+    console.log(bold('\n🔐 Sign in once — the token (and its refresh token) are cached:'));
+    const r = await authorizeMcp({
       base: oauthBase,
       onAuthorizeUrl: (u) => {
         console.log('\n   Open this in your browser and sign in:\n');
@@ -217,12 +261,35 @@ async function main(): Promise<void> {
         console.log('   Waiting for you to finish… (Ctrl-C to cancel)');
       },
     });
-    token = accessToken;
-    saveCachedToken(oauthBase, accessToken, Date.now() + expiresIn * 1000);
-    console.log(green(`✓ authenticated — cached for ~${Math.round(expiresIn / 60)} min\n`));
+    token = r.accessToken;
+    writeCache(cacheFrom(oauthBase, r));
+    console.log(
+      green(
+        `✓ authenticated — cached; ${r.refreshToken ? 'refresh token saved (silent re-auth for hours)' : 'no refresh token issued (≈1h only)'}\n`,
+      ),
+    );
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // `--tools` — dump the FULL exposed tool surface (does mode=full expose native
+  // tools, or only the search/dispatch proxy?). One cheap call, no slow lookups.
+  if (listOnly) {
+    await runProbe(
+      client,
+      connUrl,
+      token,
+      tools,
+      'Full tool inventory',
+      'List EVERY tool you can call. Output ONLY a numbered list of their exact names — no descriptions, no prose. Be exhaustive: include ALL of them, however many. Do NOT call any tool.',
+      'List every tool available to you by exact name, one per line. Do not omit any.',
+      4096,
+    );
+    console.log(
+      yellow('\n(inventory only — pass a question instead of --tools to run latency probes)'),
+    );
+    return;
+  }
 
   // Probe 1 — the native tool surface the model sees up front (no discovery).
   await runProbe(

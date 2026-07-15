@@ -13,7 +13,16 @@ import type { AddressInfo } from 'node:net';
 const CLIENT_NAME = 'Carbon vs Silicon — the Ably Quiz (study CLI)';
 const CALLBACK_TIMEOUT_MS = 5 * 60_000; // give the human 5 minutes to sign in
 
-export type OAuthResult = { accessToken: string; expiresIn: number };
+export type OAuthResult = {
+  accessToken: string;
+  expiresIn: number;
+  /** Present when the server issues one — lets a caller mint fresh access tokens
+   *  (via `refreshMcpToken`) without another interactive sign-in. */
+  refreshToken?: string;
+  /** The DCR client + token endpoint, needed to refresh later. */
+  clientId: string;
+  tokenEndpoint: string;
+};
 
 /** RFC 7636 base64url (no padding) — matches the web client's `b64url`. */
 export function base64url(buf: Buffer): string {
@@ -184,6 +193,7 @@ export async function authorizeMcp(opts: {
     const tokData = (await tok.json().catch(() => ({}))) as {
       access_token?: string;
       expires_in?: number;
+      refresh_token?: string;
       error?: string;
       error_description?: string;
     };
@@ -192,8 +202,53 @@ export async function authorizeMcp(opts: {
         tokData.error_description ?? tokData.error ?? `token exchange failed (${tok.status})`,
       );
     }
-    return { accessToken: tokData.access_token, expiresIn: tokData.expires_in ?? 3600 };
+    return {
+      accessToken: tokData.access_token,
+      expiresIn: tokData.expires_in ?? 3600,
+      ...(tokData.refresh_token ? { refreshToken: tokData.refresh_token } : {}),
+      clientId: regData.client_id,
+      tokenEndpoint: endpoints.token_endpoint,
+    };
   } finally {
     loopback.server.close();
   }
+}
+
+/**
+ * Mint a fresh access token from a stored refresh token — no interactive sign-in.
+ * Uses the same public (PKCE) DCR client id from the original authorization.
+ * Returns the new token (+ a rotated refresh token if the server issues one).
+ */
+export async function refreshMcpToken(opts: {
+  tokenEndpoint: string;
+  clientId: string;
+  refreshToken: string;
+}): Promise<OAuthResult> {
+  const tok = await fetch(opts.tokenEndpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: opts.refreshToken,
+      client_id: opts.clientId,
+    }),
+  });
+  const d = (await tok.json().catch(() => ({}))) as {
+    access_token?: string;
+    expires_in?: number;
+    refresh_token?: string;
+    error?: string;
+    error_description?: string;
+  };
+  if (!tok.ok || !d.access_token) {
+    throw new Error(d.error_description ?? d.error ?? `token refresh failed (${tok.status})`);
+  }
+  return {
+    accessToken: d.access_token,
+    expiresIn: d.expires_in ?? 3600,
+    // Servers often rotate refresh tokens; keep the new one, else reuse the old.
+    refreshToken: d.refresh_token ?? opts.refreshToken,
+    clientId: opts.clientId,
+    tokenEndpoint: opts.tokenEndpoint,
+  };
 }
