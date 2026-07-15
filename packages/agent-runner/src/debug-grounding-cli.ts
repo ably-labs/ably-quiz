@@ -272,7 +272,14 @@ async function directProbe(mcpUrl: string, token: string, question: string): Pro
     const calls: { name: string; args: Record<string, unknown> }[] = [
       { name: 'getToolCategories', args: {} },
       { name: 'getAutomaticContext', args: { conversationContext: question } },
+      { name: 'getContextDetail', args: { context: 'about-ably' } },
       { name: 'searchAblyTools', args: { query: 'confluence search pages' } },
+      // The dispatch calls that stalled 300s via the connector — hit real backends.
+      {
+        name: 'callAblyTool',
+        args: { toolName: 'confluenceSearchPages', params: { search_term: 'PSDR22' } },
+      },
+      { name: 'callAblyTool', args: { toolName: 'jiraListProjects', params: {} } },
     ];
     console.log(dim('  per-tool latency (direct):'));
     for (const c of calls) {
