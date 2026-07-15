@@ -71,7 +71,7 @@ Missing keys are skipped gracefully — a quiz still runs:
 | -------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `ABLY_API_KEY`       | **Everything realtime.** A humans-only quiz runs with just this key.                                                |
 | `AI_GATEWAY_API_KEY` | The **AI agents** — every provider answers through one [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) key. |
-| `ANTHROPIC_API_KEY`  | **Grounded** agents (the MCP MCP connector) and `pnpm agents:study`.                                            |
+| `ANTHROPIC_API_KEY`  | **Grounded** agents (the MCP connector, when you set `ABLY_MCP_URL`) and `pnpm agents:study`.                       |
 
 See **[docs/ABLY-SETUP.md](docs/ABLY-SETUP.md)** for the exact Ably app configuration
 (namespaces, persistence, batching) and **[docs/RUNBOOK.md](docs/RUNBOOK.md)** for the

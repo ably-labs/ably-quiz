@@ -15,7 +15,7 @@ import { answerQuestion, loadRegistry, type Question } from '@ably-quiz/agent-ru
 import { agentChannel, answersChannel, type AgentThinkingMessage } from '@ably-quiz/core';
 import Ably from 'ably';
 import { NextResponse } from 'next/server';
-import { ABLY_OS_CONNECTOR_TOOLS, ablyOsMcpUrl, groundingInstructions } from '@/lib/ably-os';
+import { groundingInstructions, mcpAllowedTools, mcpConnectionUrl } from '@/lib/mcp';
 import { AGENT_MODULES } from '@/lib/agent-modules.generated';
 
 export const runtime = 'nodejs';
@@ -99,7 +99,7 @@ export async function POST(req: Request): Promise<Response> {
   // Anthropic-Messages feature. Everything else answers through the gateway.
   // Token is used for this request only — never stored/logged. Also requires a
   // configured MCP server (ABLY_MCP_URL) — no endpoint, no grounding.
-  const mcpUrl = ablyOsMcpUrl();
+  const mcpUrl = mcpConnectionUrl();
   const grounded =
     Boolean(mcpToken) &&
     Boolean(mcpUrl) &&
@@ -116,7 +116,7 @@ export async function POST(req: Request): Promise<Response> {
           mcp: {
             url: mcpUrl,
             authorizationToken: mcpToken!,
-            allowedTools: ABLY_OS_CONNECTOR_TOOLS,
+            allowedTools: mcpAllowedTools(),
           },
         }
       : {};

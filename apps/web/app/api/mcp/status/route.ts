@@ -3,7 +3,7 @@
 // the host page asks this endpoint whether to show the grounding UI at all.
 
 import { NextResponse } from 'next/server';
-import { isMcpConfigured } from '@/lib/ably-os';
+import { isMcpConfigured } from '@/lib/mcp';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

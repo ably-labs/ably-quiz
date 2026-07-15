@@ -106,7 +106,7 @@ function renderCrib(agent: AgentManifest, entries: DocEntry[]): string {
 
 // --- MCP-powered study (§S6.3) ----------------------------------------------
 // The meta-game's richer path: instead of listing doc titles, an agent trawls
-// Ably knowledge through the read-only MCP MCP and synthesizes a crib of
+// Ably knowledge through the read-only MCP and synthesizes a crib of
 // quiz-ready facts. Needs credentials, so it's the study CLI that wires the
 // `research` hook (Anthropic MCP connector); here we stay pure + testable.
 
@@ -179,7 +179,7 @@ function renderMcpCrib(agent: AgentManifest, notes: string): string {
     `# ${agent.name} — crib`,
     '',
     'Pre-learned by `agents:study` (strategy `ably-mcp`): Ably knowledge researched',
-    'through the read-only MCP MCP and synthesized into quiz-ready notes. Injected',
+    'through the read-only MCP and synthesized into quiz-ready notes. Injected',
     'into the system prompt alongside the shared digest. Public-safe knowledge only.',
     '',
     notes,

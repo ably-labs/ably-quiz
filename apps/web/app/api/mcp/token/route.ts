@@ -4,7 +4,7 @@
 // there only — never persisted server-side, never logged.
 
 import { NextResponse } from 'next/server';
-import { mcpOrigin } from '@/lib/ably-os';
+import { mcpOrigin } from '@/lib/mcp';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

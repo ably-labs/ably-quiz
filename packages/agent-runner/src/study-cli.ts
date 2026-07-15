@@ -27,14 +27,21 @@ const STRATEGIES: Record<string, StudyFn> = {
   'ably-mcp': ablyMcpStudy,
 };
 
-// MCP-grounded study wiring (§S6.3). Runs locally under Matt's MCP token; the
+// MCP-grounded study wiring (§S6.3). Runs locally under your MCP token; the
 // connector is an Anthropic-Messages feature (like answer-time grounding), so it
 // goes direct to Anthropic, not the gateway. A strong model is worth it — study
-// runs rarely and offline. Read-only connector tools; the catalog is pre-injected.
+// runs rarely and offline.
 const MCP_STUDY_MODEL = 'claude-opus-4-8';
 const MCP_STUDY_SYSTEM =
-  'You are a meticulous researcher assembling a quiz crib about Ably. Ground every claim in the read-only Ably knowledge tools you can call; never invent facts.';
-const MCP_CONNECTOR_TOOLS = ['callTool', 'getContext'] as const;
+  'You are a meticulous researcher assembling a quiz crib. Ground every claim in the read-only knowledge tools you can call; never invent facts.';
+
+/** Read-only tools the study model may call — from ABLY_MCP_TOOLS (comma-separated). */
+function mcpStudyTools(): string[] {
+  return (process.env.ABLY_MCP_TOOLS ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
 
 /** The MCP connector endpoint (the `/mcp` URL) from ABLY_MCP_URL — no default;
  *  unset ⇒ MCP study is unavailable and those agents skip gracefully. */
@@ -66,7 +73,7 @@ function makeResearch(token: string): NonNullable<StudyContext['research']> {
       // Shared budget for tool-use narration AND the 250–500-word crib — give it
       // headroom so a chatty research turn can't truncate the crib mid-content.
       maxTokens: 3000,
-      mcp: { url, authorizationToken: token, allowedTools: MCP_CONNECTOR_TOOLS },
+      mcp: { url, authorizationToken: token, allowedTools: mcpStudyTools() },
     });
     return res.text;
   };

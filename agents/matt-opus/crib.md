@@ -1,7 +1,7 @@
 # Matt Opus — crib
 
 Pre-learned by `agents:study` (strategy `ably-mcp`): Ably knowledge researched
-through the read-only MCP MCP and synthesized into quiz-ready notes. Injected
+through the read-only MCP and synthesized into quiz-ready notes. Injected
 into the system prompt alongside the shared digest. Public-safe knowledge only.
 
 ## Products (what / problem / standout)
