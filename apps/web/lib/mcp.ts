@@ -54,8 +54,12 @@ export function mcpConnectionUrl(): string | undefined {
 export function groundingInstructions(): string {
   const tools = mcpAllowedTools();
   const list = tools.length > 0 ? tools.join(', ') : 'the available MCP tools';
+  // Optional per-deployment steering (e.g. "prefer getAutomaticContext; avoid the
+  // slow live-system dispatcher") — keeps server specifics out of the public repo.
+  const guidance = process.env.ABLY_MCP_GUIDANCE?.trim();
   return [
-    `You may make AT MOST ONE read-only lookup to help answer this question, by calling one of the tools available to you (${list}). Only do so when it genuinely helps — you are on a tight timer, so keep it to a single quick call.`,
+    `You have read-only knowledge tools over MCP (${list}). This is a LIVE, timed quiz. If the question is about the company/product and you're not certain, make ONE quick lookup to ground your answer — but ONLY use fast context/primer tools; do NOT trigger searches that hit live systems (they can take minutes and you'll run out of time). One quick call, then answer.`,
     'READ ONLY: never perform any create / update / delete / send / share operation, and only access clearly public or company-shared knowledge — if something looks private, personal, financial, or confidential, do not access it.',
+    ...(guidance ? [guidance] : []),
   ].join('\n');
 }

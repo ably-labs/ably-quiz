@@ -184,15 +184,15 @@ async function main(): Promise<void> {
     question,
   );
 
-  // Probe 3 — force ONLY the fast `getContext` primer (no slow backend calls), to
-  // see whether a quick, deadline-friendly grounding call is viable for the quiz.
+  // Probe 3 — force ONLY the fast, curated context-pack tools (no slow live-system
+  // dispatcher), to see whether deadline-friendly grounding is viable for the quiz.
   await runProbe(
     client,
     url,
     token,
-    ['getContext'],
-    'Probe 3 · fast primer only (getContext)',
-    'You have one tool: `getContext`, a zero-argument primer that returns company context. Call it once, then answer the question using what it returns.',
+    ['getAutomaticContext', 'getContextDetail'],
+    'Probe 3 · fast context packs only (no slow dispatcher)',
+    'You have two fast tools: `getAutomaticContext` (returns a ranked list of relevant context-pack ids) and `getContextDetail` (loads one pack’s full content by id). Call getAutomaticContext, then getContextDetail on the most relevant pack, then answer. Do not use any other tool.',
     question,
   );
 
