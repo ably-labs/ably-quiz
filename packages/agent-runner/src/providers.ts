@@ -18,8 +18,9 @@ export type AnswerJson = { choice: Choice; confidence: number; quip: string };
 /** Remote MCP grounding, driven CLIENT-SIDE (§S6.7): we open a direct MCP client
  *  and run the tool loop ourselves rather than via Anthropic's `mcp_servers`
  *  connector (whose transport added ~5s/call + 300s stalls). The host's
- *  short-lived read-only token is passed per turn and never stored. Anthropic
- *  models only (the loop uses the Anthropic Messages tool API). */
+ *  short-lived read-only token is passed per turn and never stored. Works for
+ *  every provider — Anthropic via its Messages tool API, the rest via the
+ *  gateway's OpenAI-compatible function calling (§S6.10). */
 export type McpConnector = {
   /** The MCP server endpoint (Streamable HTTP, e.g. `…/mcp?mode=full`). */
   url: string;
@@ -38,7 +39,8 @@ export type StreamArgs = {
   signal?: AbortSignal;
   /** Fires per streamed text delta (the runner pipes this to the AIT session in S4.2). */
   onDelta?: (delta: string, fullText: string) => void;
-  /** When set, ground this turn against a remote MCP server (Anthropic only). */
+  /** When set, ground this turn against a remote MCP server (any provider —
+   *  Anthropic runs the direct-API loop, everyone else the gateway loop). */
   mcp?: McpConnector;
 };
 
@@ -71,13 +73,20 @@ export type StreamFn = (args: StreamArgs) => Promise<StreamResult>;
 const now = (): number => performance.now();
 
 /** All agents answer through the Vercel AI Gateway — one key (`AI_GATEWAY_API_KEY`),
- *  unified billing, every provider behind `provider/model`. The ONE exception is a
- *  grounded Anthropic turn: the MCP connector is an Anthropic-Messages feature the
- *  OpenAI-compatible gateway can't carry, so those go direct to Anthropic. */
+ *  unified billing, every provider behind `provider/model`. Grounded turns run the
+ *  client-side MCP tool loop (§S6.7/S6.9) on whichever transport fits: Anthropic
+ *  agents go direct to the Anthropic API (proven path), everyone else drives the
+ *  same loop through the gateway's OpenAI-compatible function calling — verified
+ *  2026-07-16: every roster model (Gemini, Grok ×2, GPT ×2, Claude ×3) emits
+ *  correct tool calls through the gateway. */
 export const GATEWAY_BASE_URL = 'https://ai-gateway.vercel.sh/v1';
 
 export const streamAnswer: StreamFn = (args) => {
-  if (args.mcp) return streamAnthropicGrounded(args);
+  if (args.mcp) {
+    return args.provider === 'anthropic'
+      ? streamAnthropicGrounded(args)
+      : streamGatewayGrounded(args);
+  }
   return streamViaGateway(args);
 };
 
@@ -149,6 +158,13 @@ const DIRECT_MODEL_ALIASES: Record<string, string> = {};
  *  Keeps the loop inside the quiz deadline; the fast primer needs ~3 (§S6.7). */
 const GROUNDED_MAX_TURNS = 4;
 const GROUNDED_MAX_TOKENS = 1024;
+/** Nudge for the forced final turn: some models (live-observed with
+ *  grok-4.20-non-reasoning) keep calling tools every turn and never answer —
+ *  when the loop runs dry with no answer, one last call WITHOUT tools converts
+ *  the gathered context into an answer instead of losing it to the ungrounded
+ *  fallback. */
+const GROUNDED_ANSWER_NUDGE =
+  'Time is up — no more tool calls. Give your final answer NOW in the required JSON format, using what you found.';
 
 /** Run one tool call on the SHARED session, surviving server-side session expiry:
  *  an HTTP 404 means the session died (worker restart/expiry) — invalidate the
@@ -264,6 +280,153 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
         };
       });
       messages.push({ role: 'user', content: results });
+    }
+    // Loop ran dry without an answer (a tool-happy model) — force one final
+    // no-tools turn so the gathered context becomes an answer.
+    if (!state.answer && !state.aborted && !args.signal?.aborted) {
+      messages.push({ role: 'user', content: GROUNDED_ANSWER_NUDGE });
+      const res = await anthropic.messages.create(
+        { model, max_tokens: GROUNDED_MAX_TOKENS, system: args.system, messages },
+        args.signal ? { signal: args.signal } : {},
+      );
+      const text = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+      if (text) {
+        state.text = text;
+        args.onDelta?.(text, text);
+        const parsed = extractAnswer(text);
+        if (parsed) {
+          state.answer = parsed;
+          state.answerMs = now() - t0;
+        }
+      }
+    }
+  } catch (err) {
+    if (!isAbort(err, args.signal)) throw err;
+    state.aborted = true;
+  }
+  return finalize(state, t0);
+}
+
+/**
+ * Grounded turn for NON-Anthropic providers: the SAME client-side MCP tool loop
+ * as streamAnthropicGrounded, driven through the gateway's OpenAI-compatible
+ * function calling instead of the Anthropic Messages API. Shares the cached MCP
+ * session (§S6.9); batched tool_calls run concurrently; results feed back as
+ * `role:"tool"` messages until the model answers. Throws on setup failure so
+ * the route can retry ungrounded; a deadline abort returns whatever we have.
+ */
+async function streamGatewayGrounded(args: StreamArgs): Promise<StreamResult> {
+  const mcp = args.mcp!;
+  const gateway = new OpenAI({
+    apiKey: process.env.AI_GATEWAY_API_KEY,
+    baseURL: GATEWAY_BASE_URL,
+  });
+  const model = gatewayModel(args.provider, args.model);
+  const t0 = now();
+  const state = newState();
+  // Same safety gate as the Anthropic loop: no allowlist, no grounding.
+  const allow = mcp.allowedTools;
+  if (allow.length === 0) {
+    throw new Error('mcp.allowedTools is empty — set ABLY_MCP_TOOLS; refusing to expose all tools');
+  }
+  try {
+    const session = await getMcpSession(mcp.url, mcp.authorizationToken);
+    const usable = session.tools.filter((t) => allow.includes(t.name));
+    if (usable.length === 0) throw new Error('MCP server exposed no usable tools');
+    const tools: OpenAI.ChatCompletionTool[] = usable.map((t) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: (t.description ?? '').slice(0, 1024),
+        parameters: (t.inputSchema ?? { type: 'object' }) as Record<string, unknown>,
+      },
+    }));
+
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: args.system },
+      { role: 'user', content: args.user },
+    ];
+    for (let turn = 0; turn < GROUNDED_MAX_TURNS; turn++) {
+      if (args.signal?.aborted) {
+        state.aborted = true;
+        break;
+      }
+      const res = await gateway.chat.completions.create(
+        { model, max_tokens: GROUNDED_MAX_TOKENS, messages, tools },
+        args.signal ? { signal: args.signal } : {},
+      );
+      if (state.ttftMs === null) state.ttftMs = now() - t0;
+      const msg = res.choices[0]?.message;
+      if (!msg) break;
+      const text = msg.content ?? '';
+      if (text) {
+        state.text = text;
+        args.onDelta?.(text, text);
+        if (!state.answer) {
+          const parsed = extractAnswer(text);
+          if (parsed) {
+            state.answer = parsed;
+            state.answerMs = now() - t0;
+          }
+        }
+      }
+      const calls = (msg.tool_calls ?? []).filter((c) => c.type === 'function');
+      if (calls.length === 0) break;
+      messages.push({
+        role: 'assistant',
+        content: msg.content ?? null,
+        tool_calls: msg.tool_calls,
+      });
+      // Execute every requested tool CONCURRENTLY, then feed back in request order.
+      const settled = await Promise.all(
+        calls.map(async (c) => {
+          let input: unknown = {};
+          try {
+            input = c.function.arguments ? (JSON.parse(c.function.arguments) as unknown) : {};
+          } catch {
+            /* malformed args JSON — call with {} and let the server complain */
+          }
+          const r = await callSharedTool(session, mcp, c.function.name, input, args.signal);
+          return { c, input, r, out: mcpResultText(r.result) };
+        }),
+      );
+      for (const { c, input, r, out } of settled) {
+        state.toolCalls.push({
+          name: c.function.name,
+          input: truncate(safeJson(input), MAX_TOOL_INPUT),
+          result: truncate(out || (r.error ? safeJson(r.error) : ''), MAX_TOOL_RESULT),
+          isError: Boolean(r.error),
+          ms: r.ms,
+        });
+        messages.push({
+          role: 'tool',
+          tool_call_id: c.id,
+          content: out.slice(0, 8000) || 'no content returned',
+        });
+      }
+    }
+    // Loop ran dry without an answer (a tool-happy model — live-observed with
+    // grok-4.20) — force one final no-tools turn so the gathered context
+    // becomes an answer instead of falling back ungrounded.
+    if (!state.answer && !state.aborted && !args.signal?.aborted) {
+      messages.push({ role: 'user', content: GROUNDED_ANSWER_NUDGE });
+      const res = await gateway.chat.completions.create(
+        { model, max_tokens: GROUNDED_MAX_TOKENS, messages },
+        args.signal ? { signal: args.signal } : {},
+      );
+      const text = res.choices[0]?.message?.content ?? '';
+      if (text) {
+        state.text = text;
+        args.onDelta?.(text, text);
+        const parsed = extractAnswer(text);
+        if (parsed) {
+          state.answer = parsed;
+          state.answerMs = now() - t0;
+        }
+      }
     }
   } catch (err) {
     if (!isAbort(err, args.signal)) throw err;

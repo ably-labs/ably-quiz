@@ -98,10 +98,10 @@ export async function POST(req: Request): Promise<Response> {
   };
   emitThinking({ slug, idx: question.idx, phase: 'thinking', text: '' });
 
-  // Live MCP grounding (§S6, Option A): only when the host has authenticated,
-  // the provider supports the MCP connector (Anthropic), AND we have a direct
-  // Anthropic key — grounded turns bypass the gateway because the connector is an
-  // Anthropic-Messages feature. Everything else answers through the gateway.
+  // Live MCP grounding (§S6): available to EVERY provider once the host has
+  // authenticated — Anthropic agents run the client-side tool loop against the
+  // direct Anthropic API, everyone else runs the same loop through the gateway's
+  // OpenAI-compatible function calling (§S6.10; all roster models verified).
   // Token is used for this request only — never stored/logged. Also requires a
   // configured MCP server (ABLY_MCP_URL) — no endpoint, no grounding.
   const mcpUrl = mcpConnectionUrl();
@@ -114,12 +114,14 @@ export async function POST(req: Request): Promise<Response> {
   if (mcpToken && mcpUrl && allowedTools.length === 0) {
     console.warn('[agent-turn] ABLY_MCP_TOOLS is unset — refusing to ground with all tools');
   }
+  // Each transport needs its key: direct Anthropic for anthropic agents, the
+  // gateway for everyone else (the same key their ungrounded turns already use).
+  const groundingKey =
+    agent.manifest.provider === 'anthropic'
+      ? process.env.ANTHROPIC_API_KEY
+      : process.env.AI_GATEWAY_API_KEY;
   const grounded =
-    Boolean(mcpToken) &&
-    Boolean(mcpUrl) &&
-    allowedTools.length > 0 &&
-    agent.manifest.provider === 'anthropic' &&
-    Boolean(process.env.ANTHROPIC_API_KEY);
+    Boolean(mcpToken) && Boolean(mcpUrl) && allowedTools.length > 0 && Boolean(groundingKey);
 
   // No `onThinking` here by design (S5.3): the reasoning think-aloud must not
   // reach the player-readable agent channel. The answer core runs without a
