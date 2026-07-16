@@ -538,6 +538,7 @@ function AgentToolCallRow({ call: c }: { call: AgentToolCall }) {
     >
       <div className="flex items-center gap-2">
         <span className="text-ably">{c.name}</span>
+        {typeof c.ms === 'number' && <span className="text-neutral-500">{fmtMs(c.ms)}</span>}
         {c.isError && <span className="text-rose-400">error</span>}
       </div>
       {c.input && <p className="mt-1 break-words text-neutral-500">in: {c.input}</p>}

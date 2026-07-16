@@ -49,6 +49,8 @@ export type ToolCall = {
   input?: string;
   result?: string;
   isError?: boolean;
+  /** How long the call itself took — surfaces in the conversation viewer. */
+  ms?: number;
 };
 
 export type StreamResult = {
@@ -224,6 +226,7 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
           input: truncate(safeJson(b.input), MAX_TOOL_INPUT),
           result: truncate(out || (r.error ? safeJson(r.error) : ''), MAX_TOOL_RESULT),
           isError: Boolean(r.error),
+          ms: r.ms,
         });
         results.push({
           type: 'tool_result',

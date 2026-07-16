@@ -136,6 +136,8 @@ export const agentToolCallSchema = z.object({
   input: z.string().optional(),
   result: z.string().optional(),
   isError: z.boolean().optional(),
+  /** How long the call itself took, in ms. */
+  ms: z.number().optional(),
 });
 export type AgentToolCall = z.infer<typeof agentToolCallSchema>;
 
