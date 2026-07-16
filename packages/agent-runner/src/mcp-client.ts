@@ -13,11 +13,15 @@ export type McpTool = {
 
 export type McpCallResult = { ms: number; status: number; result?: unknown; error?: unknown };
 
+/** Per-call options. A per-call `signal` overrides the client-level one, so a
+ *  SHARED session (§S6.9) can serve many turns, each with its own deadline. */
+export type McpCallOpts = { signal?: AbortSignal };
+
 export type McpClient = {
   /** Handshake (initialize + notifications/initialized). ~4s on a cold worker. */
-  initialize(): Promise<{ ms: number; status: number; error?: unknown }>;
-  listTools(): Promise<{ ms: number; tools: McpTool[] }>;
-  callTool(name: string, args: unknown): Promise<McpCallResult>;
+  initialize(opts?: McpCallOpts): Promise<{ ms: number; status: number; error?: unknown }>;
+  listTools(opts?: McpCallOpts): Promise<{ ms: number; tools: McpTool[] }>;
+  callTool(name: string, args: unknown, opts?: McpCallOpts): Promise<McpCallResult>;
 };
 
 /** Pull the text out of an MCP tool result's `content` array (or string). */
@@ -70,9 +74,15 @@ export function makeMcpClient(
 ): McpClient {
   let sessionId: string | undefined;
   let id = 0;
-  const rpc = async (method: string, params: unknown, notify = false): Promise<McpCallResult> => {
+  const rpc = async (
+    method: string,
+    params: unknown,
+    notify = false,
+    callOpts: McpCallOpts = {},
+  ): Promise<McpCallResult> => {
     const reqId = notify ? 0 : ++id;
     const t = Date.now();
+    const signal = callOpts.signal ?? opts.signal;
     const res = await fetch(mcpUrl, {
       method: 'POST',
       headers: {
@@ -82,7 +92,7 @@ export function makeMcpClient(
         ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
       },
       body: JSON.stringify({ jsonrpc: '2.0', ...(notify ? {} : { id: reqId }), method, params }),
-      ...(opts.signal ? { signal: opts.signal } : {}),
+      ...(signal ? { signal } : {}),
     });
     const sid = res.headers.get('mcp-session-id');
     if (sid) sessionId = sid;
@@ -92,22 +102,27 @@ export function makeMcpClient(
     return { ms, status: res.status, result: parsed.result, error: parsed.error };
   };
   return {
-    async initialize() {
+    async initialize(callOpts) {
       const t = Date.now();
-      const r = await rpc('initialize', {
-        protocolVersion: '2025-06-18',
-        capabilities: {},
-        clientInfo: { name: 'ably-quiz', version: '0.0.0' },
-      });
-      if (!r.error && r.status < 400) await rpc('notifications/initialized', {}, true);
+      const r = await rpc(
+        'initialize',
+        {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'ably-quiz', version: '0.0.0' },
+        },
+        false,
+        callOpts,
+      );
+      if (!r.error && r.status < 400) await rpc('notifications/initialized', {}, true, callOpts);
       return { ms: Date.now() - t, status: r.status, error: r.error };
     },
-    async listTools() {
-      const r = await rpc('tools/list', {});
+    async listTools(callOpts) {
+      const r = await rpc('tools/list', {}, false, callOpts);
       return { ms: r.ms, tools: (r.result as { tools?: McpTool[] })?.tools ?? [] };
     },
-    callTool(name, args) {
-      return rpc('tools/call', { name, arguments: args });
+    callTool(name, args, callOpts) {
+      return rpc('tools/call', { name, arguments: args }, false, callOpts);
     },
   };
 }

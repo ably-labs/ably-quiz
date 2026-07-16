@@ -444,6 +444,22 @@ export function useHostQuiz(
     return () => clearTimeout(timer);
   }, [state.phase, state.questionIdx, question, expectedAnswerers, answersIn, controls]);
 
+  // Pre-warm the shared MCP session the moment the host holds a token (§S6.9):
+  // the ~5s handshake is paid once, server-side, BEFORE question 1 — so even the
+  // first grounded turn skips straight to the model. Fire-and-forget; once per
+  // token value; harmless if it fails (the first turn just pays it instead).
+  const prewarmedToken = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mcpToken || prewarmedToken.current === mcpToken) return;
+    if ((quiz?.config.agents ?? []).length === 0) return; // nobody to warm for
+    prewarmedToken.current = mcpToken;
+    void fetch('/api/agent-prewarm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mcpToken }),
+    }).catch(() => undefined);
+  }, [mcpToken, quiz]);
+
   // Fire each declared agent's turn when a question is broadcast (§S4.4). Request-
   // based, fire-and-forget: one POST per agent; the answer returns on the fan-in,
   // and one agent failing never stalls the quiz. Once per question idx, and only

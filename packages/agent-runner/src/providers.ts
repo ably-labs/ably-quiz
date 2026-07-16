@@ -8,7 +8,8 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
-import { makeMcpClient, mcpResultText } from './mcp-client';
+import { mcpResultText, type McpCallResult } from './mcp-client';
+import { getMcpSession, invalidateMcpSession, type McpSession } from './mcp-session';
 import type { Provider } from './schema';
 
 export type Choice = 'A' | 'B' | 'C' | 'D';
@@ -150,14 +151,34 @@ const DIRECT_MODEL_ALIASES: Record<string, string> = {
 const GROUNDED_MAX_TURNS = 4;
 const GROUNDED_MAX_TOKENS = 1024;
 
+/** Run one tool call on the SHARED session, surviving server-side session expiry:
+ *  an HTTP 404 means the session died (worker restart/expiry) — invalidate the
+ *  cache, take a fresh session, and retry the call ONCE. */
+async function callSharedTool(
+  session: McpSession,
+  mcp: { url: string; authorizationToken: string },
+  name: string,
+  input: unknown,
+  signal?: AbortSignal,
+): Promise<McpCallResult> {
+  const r = await session.client.callTool(name, input, { signal });
+  if (r.status !== 404) return r;
+  invalidateMcpSession(mcp.url, mcp.authorizationToken);
+  const fresh = await getMcpSession(mcp.url, mcp.authorizationToken);
+  return fresh.client.callTool(name, input, { signal });
+}
+
 /**
- * Grounded turn (§S6.7): a CLIENT-SIDE MCP tool loop. Open a direct MCP client
- * (fast — ~0.1-0.3s/call), hand the ALLOWLISTED tools to the model as ordinary
- * tools, and execute each `tool_use` ourselves — feeding results back until the
- * model produces its answer. This replaces Anthropic's `mcp_servers` connector,
- * whose transport added ~5s/call and stalled up to 300s. Needs ANTHROPIC_API_KEY.
- * Throws on setup failure so the route can retry ungrounded; a deadline abort
- * returns whatever we have.
+ * Grounded turn (§S6.7): a CLIENT-SIDE MCP tool loop. Take the SHARED, already-
+ * initialized MCP session (§S6.9 — the ~5s handshake is paid once per process,
+ * not per turn), hand the ALLOWLISTED tools to the model as ordinary tools, and
+ * execute each `tool_use` ourselves — feeding results back until the model
+ * produces its answer. When the model batches several tool_use blocks in one
+ * turn they run CONCURRENTLY (each call is ~0.1-0.3s; the win is that a batch
+ * costs one model round-trip instead of several). This replaces Anthropic's
+ * `mcp_servers` connector, whose transport added ~5s/call and stalled up to
+ * 300s. Needs ANTHROPIC_API_KEY. Throws on setup failure so the route can retry
+ * ungrounded; a deadline abort returns whatever we have.
  */
 async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> {
   const mcp = args.mcp!;
@@ -166,14 +187,11 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
   const t0 = now();
   const state = newState();
   try {
-    const client = makeMcpClient(mcp.url, mcp.authorizationToken, { signal: args.signal });
-    const init = await client.initialize();
-    if (init.error || init.status >= 400) {
-      throw new Error(`MCP initialize failed (status ${init.status})`);
-    }
-    const { tools } = await client.listTools();
+    const session = await getMcpSession(mcp.url, mcp.authorizationToken);
     const allow = mcp.allowedTools;
-    const usable = allow.length ? tools.filter((t) => allow.includes(t.name)) : tools;
+    const usable = allow.length
+      ? session.tools.filter((t) => allow.includes(t.name))
+      : session.tools;
     if (usable.length === 0) throw new Error('MCP server exposed no usable tools');
     const anthropicTools: Anthropic.Tool[] = usable.map((t) => ({
       name: t.name,
@@ -215,12 +233,18 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
       }
       messages.push({ role: 'assistant', content: res.content });
       if (res.stop_reason !== 'tool_use') break;
-      // Execute every tool the model asked for, directly, and feed results back.
-      const results: Anthropic.ToolResultBlockParam[] = [];
-      for (const b of res.content) {
-        if (b.type !== 'tool_use') continue;
-        const r = await client.callTool(b.name, b.input);
-        const out = mcpResultText(r.result);
+      // Execute every tool the model asked for — CONCURRENTLY when it batched
+      // several in one turn — and feed the results back in request order.
+      const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+      const settled = await Promise.all(
+        uses.map(async (b) => {
+          const r = await callSharedTool(session, mcp, b.name, b.input, args.signal);
+          return { b, r, out: mcpResultText(r.result) };
+        }),
+      );
+      // Record + feed back in REQUEST order (completion order varies), so the
+      // transcript viewer shows the calls as the model asked for them.
+      const results: Anthropic.ToolResultBlockParam[] = settled.map(({ b, r, out }) => {
         state.toolCalls.push({
           name: b.name,
           input: truncate(safeJson(b.input), MAX_TOOL_INPUT),
@@ -228,13 +252,13 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
           isError: Boolean(r.error),
           ms: r.ms,
         });
-        results.push({
-          type: 'tool_result',
+        return {
+          type: 'tool_result' as const,
           tool_use_id: b.id,
           content: out.slice(0, 8000) || 'no content returned',
           is_error: Boolean(r.error),
-        });
-      }
+        };
+      });
       messages.push({ role: 'user', content: results });
     }
   } catch (err) {

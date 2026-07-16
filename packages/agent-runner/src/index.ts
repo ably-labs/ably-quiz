@@ -16,6 +16,9 @@ export * from './registry';
 export * from './runner';
 export * from './think-stream';
 export * from './study';
+// Shared MCP sessions (§S6.9) — exported so the web app can pre-warm the
+// handshake at quiz start instead of paying ~5s on the first grounded turn.
+export { getMcpSession, invalidateMcpSession, type McpSession } from './mcp-session';
 // Types only (the dynamic-import loader in ./agent-loader is intentionally not
 // re-exported — see the bundle note above and agent-loader.ts).
 export type { AgentModule, AnswerFn } from './agent-module';
