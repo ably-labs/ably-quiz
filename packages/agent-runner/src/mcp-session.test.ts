@@ -9,7 +9,7 @@ const URL_A = 'https://mcp.example.test/mcp';
 function stubServer(opts: { failFirstInit?: boolean } = {}) {
   const counts = { initialize: 0, 'tools/list': 0, 'tools/call': 0 };
   let failNext = opts.failFirstInit ?? false;
-  const fetchMock = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (_url: unknown, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as { id?: number; method: string };
     if (body.method in counts) counts[body.method as keyof typeof counts]++;
     if (body.method === 'initialize' && failNext) {
