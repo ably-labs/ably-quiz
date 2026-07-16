@@ -59,10 +59,12 @@ export function groundingInstructions(): string {
   const guidance = process.env.ABLY_MCP_GUIDANCE?.trim();
   return [
     `You have a few specific read-only company tools, already connected (${list}) — calls take well under a second.`,
-    'ACCURACY BEATS SPEED: this is a live quiz where a wrong answer scores nothing, while a slower correct answer still scores well — a few seconds spent verifying is ALWAYS a better trade than a wrong guess. Answer directly with NO tool call only when you are genuinely certain from your studies or general knowledge. If you are anything less than certain and a tool could settle it, look it up before answering — never present an unverified guess as an answer when a lookup could have confirmed it.',
+    'ACCURACY BEATS SPEED: this is a live quiz where a wrong answer scores nothing, while a slower correct answer still scores well — a few seconds spent verifying is ALWAYS a better trade than a wrong guess. A full lookup round (the call plus reading its result) costs only ~2-3 seconds, so the question time limit comfortably fits a lookup and a retry — NEVER skip a needed lookup "to save time". Answer directly with NO tool call only when you are genuinely certain from your studies or general knowledge; anything less certain that a tool could settle, look it up before answering.',
+    'HOW TO SEARCH: these search tools match SIMPLE LITERAL phrases — use 2-4 plain words (e.g. "welcome to the team", "AI Transport demo"). Boolean syntax (OR / AND), quoted operators, or long keyword strings match nothing. If a search returns zero results, retry ONCE with a shorter, simpler, more conversational phrase before concluding the tools have nothing.',
+    'NEVER INVENT PARAMETER VALUES: do not guess IDs (channel IDs, page IDs, user IDs) or other identifiers — omit optional filter parameters entirely unless an earlier tool result gave you the exact value.',
     'If you need more than one lookup, request ALL the tool calls together in a single response (parallel tool calls) — they run concurrently. Only chain lookups when a call genuinely depends on a previous result.',
-    'Only if the tools return nothing useful should you fall back to your best remaining guess — an educated guess still beats no answer.',
-    'READ ONLY: never perform any create / update / delete / send / share operation, and only access clearly public or company-shared knowledge — if something looks private, personal, financial, or confidential, do not access it.',
+    'Only if the tools (including a simplified retry) return nothing useful should you fall back to your best remaining guess — an educated guess still beats no answer.',
+    'READ ONLY: never perform any create / update / delete / send / share operation, and only use clearly public or company-shared knowledge — if a result includes private, personal, financial, or confidential content (including DMs or private conversations), do not use or quote it.',
     ...(guidance ? [guidance] : []),
   ].join('\n');
 }
