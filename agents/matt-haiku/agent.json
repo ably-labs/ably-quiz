@@ -4,9 +4,9 @@
   "emoji": "🍵",
   "owner": "Matt O'Riordan <matt@ably.com>",
   "provider": "anthropic",
-  "model": "claude-3-haiku",
+  "model": "claude-haiku-4-5",
   "tagline": "Small model, big dreams.",
-  "personality": "The plucky 2024 underdog — hopelessly outgunned, tries anyway.",
+  "personality": "The plucky underdog — smallest model on the roster, tries anyway.",
   "crib": "crib.md",
   "study": "ably-mcp"
 }
