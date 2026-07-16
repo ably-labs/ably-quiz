@@ -161,6 +161,10 @@ export function useMcpAuth(quizId: string | null): McpAuth {
         auth.searchParams.set('code_challenge', challenge);
         auth.searchParams.set('code_challenge_method', 'S256');
         auth.searchParams.set('state', state);
+        // FULL mode is baked into the token at AUTHORIZE time (§S6.8): it flattens
+        // all native tools into tools/list so the grounded loop can hand the
+        // ABLY_MCP_TOOLS subset to the model directly — no dispatcher, real schemas.
+        auth.searchParams.set('mode', 'full');
         window.location.href = auth.toString();
       } catch (e) {
         setStatus('error');

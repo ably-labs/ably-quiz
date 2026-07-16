@@ -220,33 +220,17 @@ async function directProbe(mcpUrl: string, token: string): Promise<void> {
     );
     // Real backend reads (Jira/Confluence/Gong/HubSpot/GitHub) timed directly, with
     // a peek at the RESULT so we can tell real data from a fast empty/error return.
+    // Full-mode token ⇒ the flattened native tools are called DIRECTLY by name.
     const calls: { label: string; name: string; args: Record<string, unknown> }[] = [
-      { label: 'getToolCategories', name: 'getToolCategories', args: {} },
       {
         label: 'Confluence search',
-        name: 'callAblyTool',
-        args: { toolName: 'confluenceSearchPages', params: { search_term: 'AI Transport' } },
+        name: 'confluenceSearchPages',
+        args: { search_term: 'AI Transport' },
       },
-      {
-        label: 'Jira search',
-        name: 'callAblyTool',
-        args: { toolName: 'jiraSearchIssues', params: { text: 'AI Transport', limit: 3 } },
-      },
-      {
-        label: 'Gong (find tool)',
-        name: 'searchAblyTools',
-        args: { query: 'gong calls transcripts' },
-      },
-      {
-        label: 'HubSpot (find tool)',
-        name: 'searchAblyTools',
-        args: { query: 'hubspot deals companies' },
-      },
-      {
-        label: 'GitHub search',
-        name: 'callAblyTool',
-        args: { toolName: 'githubSearchAblyRepositories', params: { query: 'ably-core-mcp' } },
-      },
+      { label: 'Jira search', name: 'jiraSearchIssues', args: { text: 'AI Transport', limit: 3 } },
+      { label: 'Gong list calls', name: 'gongListCalls', args: { limit: 3 } },
+      { label: 'HubSpot deals', name: 'hubspotSearchDeals', args: { query: 'Ably', limit: 3 } },
+      { label: 'GitHub search', name: 'githubSearchAblyRepositories', args: { query: 'mcp' } },
     ];
     console.log(dim('  backend read latency (direct) + result peek:'));
     for (const c of calls) {

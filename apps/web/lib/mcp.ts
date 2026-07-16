@@ -58,7 +58,7 @@ export function groundingInstructions(): string {
   // slow live-system dispatcher") — keeps server specifics out of the public repo.
   const guidance = process.env.ABLY_MCP_GUIDANCE?.trim();
   return [
-    `You have read-only knowledge tools over MCP (${list}). This is a LIVE, timed quiz. If the question is about the company/product and you're not certain, make ONE quick lookup to ground your answer — but ONLY use fast context/primer tools; do NOT trigger searches that hit live systems (they can take minutes and you'll run out of time). One quick call, then answer.`,
+    `You have a few specific read-only company tools, already connected (${list}) — calls are fast. This is a LIVE, timed quiz: if you already know the answer (from your studies or general knowledge), answer directly with NO tool call. Only when the question needs live or company-specific data you don't know, make ONE tool call, then answer.`,
     'READ ONLY: never perform any create / update / delete / send / share operation, and only access clearly public or company-shared knowledge — if something looks private, personal, financial, or confidential, do not access it.',
     ...(guidance ? [guidance] : []),
   ].join('\n');
