@@ -42,6 +42,11 @@ export type StreamArgs = {
   /** When set, ground this turn against a remote MCP server (any provider —
    *  Anthropic runs the direct-API loop, everyone else the gateway loop). */
   mcp?: McpConnector;
+  /** Grounded turns: elapsed ms after which NO further tool rounds start — the
+   *  loop jumps straight to the forced no-tools answer. Prompt guidance alone
+   *  doesn't hold (live-observed: models retrying searches until the deadline
+   *  killed the turn with no answer); this is the hard guard. */
+  toolBudgetMs?: number;
 };
 
 /** One MCP tool the model called during a grounded turn (§S6.6). input/result
@@ -158,6 +163,9 @@ const DIRECT_MODEL_ALIASES: Record<string, string> = {};
  *  Keeps the loop inside the quiz deadline; the fast primer needs ~3 (§S6.7). */
 const GROUNDED_MAX_TURNS = 4;
 const GROUNDED_MAX_TOKENS = 1024;
+/** The forced answer turn only needs the answer JSON — a tight cap keeps it
+ *  fast on slow models so it fits the reserve the tool budget leaves it. */
+const GROUNDED_NUDGE_MAX_TOKENS = 400;
 /** Nudge for the forced final turn: some models (live-observed with
  *  grok-4.20-non-reasoning) keep calling tools every turn and never answer —
  *  when the loop runs dry with no answer, one last call WITHOUT tools converts
@@ -220,11 +228,17 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
     }));
 
     const messages: Anthropic.MessageParam[] = [{ role: 'user', content: args.user }];
+    let roundMs = 0; // previous model-round duration — predicts if another fits
     for (let turn = 0; turn < GROUNDED_MAX_TURNS; turn++) {
       if (args.signal?.aborted) {
         state.aborted = true;
         break;
       }
+      // Don't START a tool round that won't finish inside the budget (elapsed +
+      // a round like the last one) — break to the forced answer instead, which
+      // then has the full reserve to run. Round 0 always runs.
+      if (turn > 0 && now() - t0 + roundMs > (args.toolBudgetMs ?? Infinity)) break;
+      const roundT0 = now();
       const res = await anthropic.messages.create(
         {
           model,
@@ -235,6 +249,7 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
         },
         args.signal ? { signal: args.signal } : {},
       );
+      roundMs = now() - roundT0;
       if (state.ttftMs === null) state.ttftMs = now() - t0;
       const text = res.content
         .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -275,18 +290,36 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
         return {
           type: 'tool_result' as const,
           tool_use_id: b.id,
-          content: out.slice(0, 8000) || 'no content returned',
+          content: out.slice(0, MAX_TOOL_FEEDBACK) || 'no content returned',
           is_error: Boolean(r.error),
         };
       });
       messages.push({ role: 'user', content: results });
     }
-    // Loop ran dry without an answer (a tool-happy model) — force one final
-    // no-tools turn so the gathered context becomes an answer.
+    // Loop ran dry without an answer (a tool-happy model, or the tool budget) —
+    // force one final answer turn. Roles must alternate, so if the history ends
+    // with a user tool_result message, append the nudge as a text block to it;
+    // and `tools` must stay declared (the history holds tool blocks) with
+    // tool_choice none so the model can't call anything further.
     if (!state.answer && !state.aborted && !args.signal?.aborted) {
-      messages.push({ role: 'user', content: GROUNDED_ANSWER_NUDGE });
+      const last = messages.at(-1);
+      if (last?.role === 'user' && Array.isArray(last.content)) {
+        (last.content as Anthropic.ContentBlockParam[]).push({
+          type: 'text',
+          text: GROUNDED_ANSWER_NUDGE,
+        });
+      } else {
+        messages.push({ role: 'user', content: GROUNDED_ANSWER_NUDGE });
+      }
       const res = await anthropic.messages.create(
-        { model, max_tokens: GROUNDED_MAX_TOKENS, system: args.system, messages },
+        {
+          model,
+          max_tokens: GROUNDED_NUDGE_MAX_TOKENS,
+          system: args.system,
+          messages,
+          tools: anthropicTools,
+          tool_choice: { type: 'none' },
+        },
         args.signal ? { signal: args.signal } : {},
       );
       const text = res.content
@@ -349,15 +382,22 @@ async function streamGatewayGrounded(args: StreamArgs): Promise<StreamResult> {
       { role: 'system', content: args.system },
       { role: 'user', content: args.user },
     ];
+    let roundMs = 0; // previous model-round duration — predicts if another fits
     for (let turn = 0; turn < GROUNDED_MAX_TURNS; turn++) {
       if (args.signal?.aborted) {
         state.aborted = true;
         break;
       }
+      // Don't START a tool round that won't finish inside the budget (elapsed +
+      // a round like the last one) — break to the forced answer instead, which
+      // then has the full reserve to run. Round 0 always runs.
+      if (turn > 0 && now() - t0 + roundMs > (args.toolBudgetMs ?? Infinity)) break;
+      const roundT0 = now();
       const res = await gateway.chat.completions.create(
         { model, max_tokens: GROUNDED_MAX_TOKENS, messages, tools },
         args.signal ? { signal: args.signal } : {},
       );
+      roundMs = now() - roundT0;
       if (state.ttftMs === null) state.ttftMs = now() - t0;
       const msg = res.choices[0]?.message;
       if (!msg) break;
@@ -404,17 +444,18 @@ async function streamGatewayGrounded(args: StreamArgs): Promise<StreamResult> {
         messages.push({
           role: 'tool',
           tool_call_id: c.id,
-          content: out.slice(0, 8000) || 'no content returned',
+          content: out.slice(0, MAX_TOOL_FEEDBACK) || 'no content returned',
         });
       }
     }
     // Loop ran dry without an answer (a tool-happy model — live-observed with
-    // grok-4.20) — force one final no-tools turn so the gathered context
-    // becomes an answer instead of falling back ungrounded.
+    // grok-4.20 — or the tool budget) — force one final turn, tools declared
+    // (the history holds tool messages) but tool_choice none, so the gathered
+    // context becomes an answer instead of falling back ungrounded.
     if (!state.answer && !state.aborted && !args.signal?.aborted) {
       messages.push({ role: 'user', content: GROUNDED_ANSWER_NUDGE });
       const res = await gateway.chat.completions.create(
-        { model, max_tokens: GROUNDED_MAX_TOKENS, messages },
+        { model, max_tokens: GROUNDED_NUDGE_MAX_TOKENS, messages, tools, tool_choice: 'none' },
         args.signal ? { signal: args.signal } : {},
       );
       const text = res.choices[0]?.message?.content ?? '';
@@ -474,6 +515,11 @@ function finalize(s: StreamState, t0: number): StreamResult {
 // Tool input/result are truncated so a transcript message stays small (§S6.6).
 const MAX_TOOL_INPUT = 400;
 const MAX_TOOL_RESULT = 600;
+/** How much of a tool result the MODEL sees per call. Big enough for a search
+ *  summary + the first few hits; small enough that a multi-search history
+ *  doesn't balloon the prompt and slow every subsequent round (§S6.11 — the
+ *  8K original made slow models miss the deadline). */
+const MAX_TOOL_FEEDBACK = 4000;
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;

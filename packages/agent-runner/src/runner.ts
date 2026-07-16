@@ -88,7 +88,10 @@ export async function answerQuestion(
         text = full;
         opts.onThinking?.(delta, full);
       },
-      ...(opts.mcp ? { mcp: opts.mcp } : {}),
+      // Grounded turns stop tooling ~5s before the deadline so the forced
+      // answer round always has room to run (§S6.11) — prompt guidance alone
+      // didn't hold against search-retry spirals.
+      ...(opts.mcp ? { mcp: opts.mcp, toolBudgetMs: Math.max(3000, deadlineMs - 5000) } : {}),
     });
   } finally {
     clearTimeout(timer);
