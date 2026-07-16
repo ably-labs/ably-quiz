@@ -138,13 +138,12 @@ async function streamViaGateway(args: StreamArgs): Promise<StreamResult> {
   return finalize(state, t0);
 }
 
-// The grounded loop calls Anthropic directly, and the direct API needs full,
-// dated model ids — it 404s on the short gateway aliases some agents use (e.g.
-// `claude-3-haiku`). Normalize the known ones; an unmapped/retired id just 404s
-// and the turn falls back to ungrounded. Extend this (or fix the agent's model).
-const DIRECT_MODEL_ALIASES: Record<string, string> = {
-  'claude-3-haiku': 'claude-3-haiku-20240307',
-};
+// The grounded loop calls Anthropic directly; some short model ids the gateway
+// accepts may need normalizing to a direct-API id here. An unmapped/retired id
+// 404s and the turn falls back to ungrounded (live-observed 2026-07-16 with the
+// retired claude-3-haiku-20240307) — prefer fixing the agent's manifest to a
+// current model over adding an alias.
+const DIRECT_MODEL_ALIASES: Record<string, string> = {};
 
 /** How many model↔tool rounds a grounded turn may take before it must answer.
  *  Keeps the loop inside the quiz deadline; the fast primer needs ~3 (§S6.7). */

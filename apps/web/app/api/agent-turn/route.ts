@@ -148,6 +148,12 @@ export async function POST(req: Request): Promise<Response> {
   };
 
   const ungrounded = () => answerFn(agent.manifest, question, { digest, crib: agent.crib });
+  // `grounded` is what we ATTEMPTED; `usedGrounding` is what actually produced the
+  // outcome. Every fallback below flips it, so the transcript (and its "grounded"
+  // badge in the viewer) never claims grounding for an ungrounded answer — the
+  // live test that surfaced this showed a retired-model 404 falling back
+  // ungrounded while the card still read "grounded".
+  let usedGrounding = grounded;
   let outcome;
   try {
     outcome = await answerFn(agent.manifest, question, {
@@ -162,6 +168,7 @@ export async function POST(req: Request): Promise<Response> {
     console.warn(`[agent-turn] ${slug} grounded turn failed; retrying ungrounded:`, err);
     try {
       outcome = await ungrounded();
+      usedGrounding = false;
     } catch (err2) {
       return fail(err2);
     }
@@ -172,6 +179,7 @@ export async function POST(req: Request): Promise<Response> {
     console.warn(`[agent-turn] ${slug} grounded turn produced no answer; retrying ungrounded`);
     try {
       outcome = await ungrounded();
+      usedGrounding = false;
     } catch (err) {
       return fail(err);
     }
@@ -182,7 +190,7 @@ export async function POST(req: Request): Promise<Response> {
   // released to /screen at reveal; it must never touch this player-readable channel.
   // Observability for the grounding question (§S6.6): make it obvious in the
   // server log whether a grounded agent actually called any MCP tools.
-  if (grounded) {
+  if (usedGrounding) {
     const names = outcome.toolCalls.map((c) => c.name).join(', ');
     console.log(
       `[agent-turn] ${slug} grounded turn: ${outcome.toolCalls.length} tool call(s)${names ? ` — ${names}` : ' (answered from own knowledge)'}`,
@@ -201,7 +209,7 @@ export async function POST(req: Request): Promise<Response> {
     idx: question.idx,
     model: agent.manifest.model,
     provider: agent.manifest.provider,
-    grounded,
+    grounded: usedGrounding,
     question: question.prompt,
     options: question.options,
     reasoning: outcome.thinking,
