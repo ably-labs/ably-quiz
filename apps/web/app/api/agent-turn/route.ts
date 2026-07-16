@@ -105,9 +105,19 @@ export async function POST(req: Request): Promise<Response> {
   // Token is used for this request only — never stored/logged. Also requires a
   // configured MCP server (ABLY_MCP_URL) — no endpoint, no grounding.
   const mcpUrl = mcpConnectionUrl();
+  // The tool ALLOWLIST is a hard requirement for grounding (§S6.9): a full-mode
+  // token exposes the server's whole tool surface including WRITE tools, and the
+  // server enforces no allowlist — ABLY_MCP_TOOLS is the safety gate. No list,
+  // no grounding (the runner refuses too; this keeps `grounded` honest in
+  // transcripts and skips a doomed attempt).
+  const allowedTools = mcpAllowedTools();
+  if (mcpToken && mcpUrl && allowedTools.length === 0) {
+    console.warn('[agent-turn] ABLY_MCP_TOOLS is unset — refusing to ground with all tools');
+  }
   const grounded =
     Boolean(mcpToken) &&
     Boolean(mcpUrl) &&
+    allowedTools.length > 0 &&
     agent.manifest.provider === 'anthropic' &&
     Boolean(process.env.ANTHROPIC_API_KEY);
 
@@ -121,7 +131,7 @@ export async function POST(req: Request): Promise<Response> {
           mcp: {
             url: mcpUrl,
             authorizationToken: mcpToken!,
-            allowedTools: mcpAllowedTools(),
+            allowedTools,
           },
         }
       : {};

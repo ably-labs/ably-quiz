@@ -186,12 +186,17 @@ async function streamAnthropicGrounded(args: StreamArgs): Promise<StreamResult> 
   const model = DIRECT_MODEL_ALIASES[args.model] ?? args.model;
   const t0 = now();
   const state = newState();
+  // The allowlist is the SAFETY GATE, not an optimization: a full-mode token
+  // exposes the server's entire tool surface INCLUDING WRITE TOOLS, and the
+  // server does not enforce any allowlist server-side. Refuse to ground rather
+  // than hand the model everything — the route falls back to ungrounded.
+  const allow = mcp.allowedTools;
+  if (allow.length === 0) {
+    throw new Error('mcp.allowedTools is empty — set ABLY_MCP_TOOLS; refusing to expose all tools');
+  }
   try {
     const session = await getMcpSession(mcp.url, mcp.authorizationToken);
-    const allow = mcp.allowedTools;
-    const usable = allow.length
-      ? session.tools.filter((t) => allow.includes(t.name))
-      : session.tools;
+    const usable = session.tools.filter((t) => allow.includes(t.name));
     if (usable.length === 0) throw new Error('MCP server exposed no usable tools');
     const anthropicTools: Anthropic.Tool[] = usable.map((t) => ({
       name: t.name,
