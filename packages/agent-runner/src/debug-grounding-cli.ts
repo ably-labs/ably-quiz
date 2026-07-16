@@ -70,6 +70,8 @@ type TokenCache = {
   refreshToken?: string;
   clientId?: string;
   tokenEndpoint?: string;
+  /** The token was minted with ?mode=full at authorize (flattened 140+ tools). */
+  fullMode?: boolean;
 };
 function readCache(): TokenCache | null {
   try {
@@ -86,7 +88,7 @@ function writeCache(c: TokenCache): void {
     console.warn(dim(`(could not cache token: ${err instanceof Error ? err.message : err})`));
   }
 }
-function cacheFrom(base: string, r: OAuthResult): TokenCache {
+function cacheFrom(base: string, r: OAuthResult, fullMode: boolean): TokenCache {
   return {
     base,
     accessToken: r.accessToken,
@@ -94,6 +96,7 @@ function cacheFrom(base: string, r: OAuthResult): TokenCache {
     ...(r.refreshToken ? { refreshToken: r.refreshToken } : {}),
     clientId: r.clientId,
     tokenEndpoint: r.tokenEndpoint,
+    fullMode,
   };
 }
 
@@ -510,17 +513,14 @@ async function main(): Promise<void> {
     console.log(green('  auth:       ABLY_MCP_AUTH (preset)'));
   } else {
     const cached = readCache();
-    if (cached?.base === oauthBase && cached.expiresAt > Date.now() + 60_000) {
+    // Only reuse a token minted in FULL mode — a slim token exposes the 8-tool
+    // dispatcher, not the flattened 140+ surface we want.
+    const usable = cached?.base === oauthBase && cached.fullMode === true;
+    if (usable && cached.expiresAt > Date.now() + 60_000) {
       token = cached.accessToken;
       const mins = Math.round((cached.expiresAt - Date.now()) / 60_000);
-      console.log(green(`  auth:       cached token (valid ~${mins} more min) — sign-in skipped`));
-    } else if (
-      cached?.base === oauthBase &&
-      cached.refreshToken &&
-      cached.clientId &&
-      cached.tokenEndpoint
-    ) {
-      // Access token expired — mint a fresh one silently from the refresh token.
+      console.log(green(`  auth:       cached full-mode token (~${mins} min) — sign-in skipped`));
+    } else if (usable && cached.refreshToken && cached.clientId && cached.tokenEndpoint) {
       try {
         const r = await refreshMcpToken({
           tokenEndpoint: cached.tokenEndpoint,
@@ -528,25 +528,24 @@ async function main(): Promise<void> {
           refreshToken: cached.refreshToken,
         });
         token = r.accessToken;
-        writeCache(cacheFrom(oauthBase, r));
+        writeCache(cacheFrom(oauthBase, r, true));
         console.log(
-          green(
-            `  auth:       refreshed token silently (valid ~${Math.round(r.expiresIn / 60)} min)`,
-          ),
+          green(`  auth:       refreshed full-mode token (~${Math.round(r.expiresIn / 60)} min)`),
         );
       } catch (err) {
         console.log(
-          dim(
-            `  auth:       refresh failed (${err instanceof Error ? err.message : err}) — need sign-in`,
-          ),
+          dim(`  auth:       refresh failed (${err instanceof Error ? err.message : err})`),
         );
       }
+    } else if (cached && !usable) {
+      console.log(dim('  auth:       cached token is SLIM mode — re-authenticating for full mode'));
     }
   }
   if (!token) {
-    console.log(bold('\n🔐 Sign in once — the token (and its refresh token) are cached:'));
+    console.log(bold('\n🔐 Sign in once (FULL mode) — the token + refresh token are cached:'));
     const r = await authorizeMcp({
       base: oauthBase,
+      authorizeParams: { mode: 'full' }, // baked into the token → flattened 140+ tools
       onAuthorizeUrl: (u) => {
         console.log('\n   Open this in your browser and sign in:\n');
         console.log(`   ${u}\n`);
@@ -554,7 +553,7 @@ async function main(): Promise<void> {
       },
     });
     token = r.accessToken;
-    writeCache(cacheFrom(oauthBase, r));
+    writeCache(cacheFrom(oauthBase, r, true));
     console.log(
       green(
         `✓ authenticated — cached; ${r.refreshToken ? 'refresh token saved (silent re-auth for hours)' : 'no refresh token issued (≈1h only)'}\n`,

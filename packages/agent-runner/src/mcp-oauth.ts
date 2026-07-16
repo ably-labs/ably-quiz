@@ -142,6 +142,10 @@ export async function authorizeMcp(opts: {
   /** OAuth base origin (e.g. https://…workers.dev) — endpoints hang off it. */
   base: string;
   onAuthorizeUrl: (url: string) => void;
+  /** Extra query params for the AUTHORIZE url. The Ably MCP reads `mode=full`
+   *  here (not on the /mcp request) and bakes it into the token, so it must be
+   *  set at sign-in time to get the flattened 140+ tool surface. */
+  authorizeParams?: Record<string, string>;
 }): Promise<OAuthResult> {
   const loopback = await startLoopback();
   const { redirectUri } = loopback;
@@ -174,6 +178,9 @@ export async function authorizeMcp(opts: {
     authUrl.searchParams.set('code_challenge', pkceChallenge(verifier));
     authUrl.searchParams.set('code_challenge_method', 'S256');
     authUrl.searchParams.set('state', state);
+    for (const [k, v] of Object.entries(opts.authorizeParams ?? {})) {
+      authUrl.searchParams.set(k, v);
+    }
     opts.onAuthorizeUrl(authUrl.toString());
 
     const { code, state: returnedState } = await loopback.waitForCode();

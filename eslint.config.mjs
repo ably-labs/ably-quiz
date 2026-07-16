@@ -6,7 +6,13 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/.next/**', '**/dist/**', '**/*.tsbuildinfo', '**/next-env.d.ts'],
+    ignores: [
+      '**/.next/**',
+      '**/dist/**',
+      '**/*.tsbuildinfo',
+      '**/next-env.d.ts',
+      '**/.claude/**', // gitignored ephemeral worktrees — don't lint their copies
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
