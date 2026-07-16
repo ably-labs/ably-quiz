@@ -28,6 +28,16 @@ const CACHE_FILE = fileURLToPath(new URL('.mcp-token-cache.json', REPO_ROOT));
 const ANTHROPIC_MCP_BETA = 'mcp-client-2025-04-04';
 const MODEL = process.env.DEBUG_GROUNDING_MODEL ?? 'claude-sonnet-5';
 
+// Representative specific read tools to resolve when no list is given — a mix
+// across systems, to show what the env list ∩ server tools looks like.
+const DEFAULT_WANTED = [
+  'confluenceSearchPages',
+  'jiraSearchIssues',
+  'gongGetCallTranscript',
+  'hubspotSearchDeals',
+  'githubSearchAblyRepositories',
+];
+
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
@@ -332,6 +342,129 @@ async function loopProbe(
   );
 }
 
+// --- intersection spike (§S6.8) ----------------------------------------------
+// Matt's design: at authenticate, open ONE connection, resolve the env tool list
+// against what the server actually exposes, learn each tool's schema, and hand
+// those tools to the agent directly — so at answer time there's NO discovery, and
+// the model just decides whether it needs a tool. This proves the "connect →
+// intersection → ready" step and shows where the env list ∩ server tools lands.
+async function intersectProbe(mcpUrl: string, token: string, wanted: string[]): Promise<void> {
+  console.log(`\n${bold('══ Intersection · env tool list ∩ server tools ══')}`);
+  const mcp = makeMcpClient(mcpUrl, token);
+  const init = await mcp.initialize();
+  console.log(
+    `  initialize        ${bold(String(init.ms) + 'ms')} ${dim('(ONE-TIME — pre-warm to remove from every turn)')}`,
+  );
+  if (init.error || init.status >= 400) return console.log(red('  init failed — cannot continue.'));
+
+  const list = await mcp.listTools();
+  const topLevel = list.tools.map((t) => t.name);
+  console.log(`  top-level tools   ${bold(String(topLevel.length))}: ${dim(topLevel.join(', '))}`);
+  const cats = await mcp.callTool('getToolCategories', {});
+  console.log(dim('  getToolCategories (the dispatchable universe):'));
+  console.log(dim('    ' + mcpResultText(cats.result).replace(/\n+/g, ' ').slice(0, 500)));
+
+  console.log(bold(`\n  resolving your ${wanted.length} wanted tool(s):`));
+  const resolved: { name: string; description: string }[] = [];
+  let resolveMs = 0;
+  for (const name of wanted) {
+    if (topLevel.includes(name)) {
+      console.log(`    ${green('✓ ' + name.padEnd(26))} top-level — call directly`);
+      resolved.push({
+        name,
+        description: list.tools.find((t) => t.name === name)?.description ?? '',
+      });
+      continue;
+    }
+    const s = await mcp.callTool('searchAblyTools', { query: name, includeSchema: true });
+    resolveMs += s.ms;
+    const txt = mcpResultText(s.result);
+    const exact = new RegExp('`' + name + '`|"name"\\s*:\\s*"' + name + '"').test(txt);
+    if (exact) {
+      console.log(
+        `    ${green('✓ ' + name.padEnd(26))} dispatchable via callAblyTool ${dim((s.ms / 1000).toFixed(1) + 's')}`,
+      );
+      // A short description for the model — the line after the tool's name.
+      const desc = txt.split(name)[1]?.split('\n').slice(0, 2).join(' ').slice(0, 160) ?? '';
+      resolved.push({ name, description: desc });
+    } else {
+      const best = txt.match(/Best Match:\s*`?(\w+)`?/)?.[1];
+      console.log(
+        `    ${red('✗ ' + name.padEnd(26))} not an exact tool ${dim(best ? `(closest: ${best})` : '')}`,
+      );
+    }
+  }
+  console.log(
+    bold(`\n  intersection: ${resolved.length}/${wanted.length} available`) +
+      `  → ${resolved.map((r) => r.name).join(', ') || '(none)'}`,
+  );
+  console.log(
+    dim(
+      `  connect cost (init + ${wanted.length} resolves): ~${((init.ms + resolveMs) / 1000).toFixed(1)}s ONCE.`,
+    ),
+  );
+  if (resolved.length === 0) return;
+
+  // Phase 2 — hand those specific tools to the model DIRECTLY (a call to any of
+  // them is translated to callAblyTool under the hood), ask a question that needs
+  // a LIVE lookup, and time the ANSWER turn only (the connect above is one-time).
+  console.log(bold('\n  ── answer turn: agent decides, calls a specific tool directly ──'));
+  const anthropicTools: Anthropic.Tool[] = resolved.map((r) => ({
+    name: r.name,
+    description: r.description || `${r.name} (Ably ${r.name.replace(/[A-Z].*/, '')} tool)`,
+    input_schema: { type: 'object', additionalProperties: true } as Anthropic.Tool.InputSchema,
+  }));
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const q = process.argv[3]?.includes(',')
+    ? 'Are there any open Jira issues that mention "AI Transport"? If so, name one.'
+    : (process.argv[3] ??
+      'Are there any open Jira issues that mention "AI Transport"? If so, name one.');
+  console.log(dim(`  question: ${q}`));
+  const system =
+    'You are answering a question about the user’s company. If you already know the answer, answer directly. If it needs live/specific data, call ONE of your tools — they run instantly. Then answer in one or two sentences.';
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: q }];
+  const t0 = Date.now();
+  for (let turn = 0; turn < 4; turn++) {
+    const res = await client.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system,
+      messages,
+      tools: anthropicTools,
+    });
+    console.log(
+      `    ${dim(`[+${((Date.now() - t0) / 1000).toFixed(1)}s]`)} model turn ${turn + 1}: ${bold(String(res.stop_reason))}`,
+    );
+    messages.push({ role: 'assistant', content: res.content });
+    if (res.stop_reason !== 'tool_use') {
+      const text = res.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('');
+      console.log(
+        green(`    ✓ answered in ${((Date.now() - t0) / 1000).toFixed(1)}s (excl. connect)`),
+      );
+      console.log(dim('    answer: ' + text.slice(0, 300)));
+      break;
+    }
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const b of res.content) {
+      if (b.type !== 'tool_use') continue;
+      // Translate the direct tool call into the dispatcher underneath.
+      const r = await mcp.callTool('callAblyTool', { toolName: b.name, params: b.input });
+      console.log(
+        `      → ${green(b.name)}(${dim(JSON.stringify(b.input).slice(0, 60))}) ${bold((r.ms / 1000).toFixed(1) + 's')}`,
+      );
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: b.id,
+        content: mcpResultText(r.result).slice(0, 4000) || 'no content',
+      });
+    }
+    messages.push({ role: 'user', content: toolResults });
+  }
+}
+
 async function main(): Promise<void> {
   loadEnv({ path: ENV_LOCAL });
   const rawUrl = process.env.ABLY_MCP_URL;
@@ -348,9 +481,17 @@ async function main(): Promise<void> {
   const listOnly = arg === '--tools';
   const directOnly = arg === '--direct';
   const loopMode = arg === '--loop';
+  const intersect = arg === '--intersect';
+  // For --intersect, the wanted list is `--intersect a,b,c`, else ABLY_MCP_TOOLS,
+  // else a representative mix of specific read tools to show what resolves.
+  const wanted = (process.argv[3]?.split(',') ?? (tools.length ? tools : DEFAULT_WANTED))
+    .map((s) => s.trim())
+    .filter(Boolean);
   const question =
-    listOnly || directOnly || loopMode
-      ? (process.argv[3] ?? 'What is Ably PSDR22 about?')
+    listOnly || directOnly || loopMode || intersect
+      ? process.argv[3] && !intersect
+        ? process.argv[3]
+        : 'What is Ably PSDR22 about?'
       : (arg ?? 'What is Ably PSDR22 about?');
   const oauthBase = new URL(rawUrl).origin;
   const connUrl = connectorUrl(rawUrl);
@@ -428,6 +569,13 @@ async function main(): Promise<void> {
     console.log(
       yellow('\n(direct probe — server latency with NO Anthropic connector in the path)'),
     );
+    return;
+  }
+
+  // `--intersect [a,b,c]` — resolve a wanted tool list against the server (§S6.8).
+  if (intersect) {
+    await intersectProbe(connUrl, token, wanted);
+    console.log(yellow('\n(intersection spike — connect once, resolve the env tool list, done)'));
     return;
   }
 
