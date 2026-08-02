@@ -70,6 +70,46 @@ What's automatic: player and `/screen` recovery, and answer durability. What nee
 hand: if the **host** tab itself is the thing that dropped and can't reconnect, reload
 `/host?quiz=<id>` on the host machine (above) to rebuild state from history.
 
+## Round two: "beat the agents" — the crowd writes the questions
+
+A fundamentally different game on the same engine: **the humans design the questions,
+trying to beat the agents.** Nothing changes mechanically — question collection happens
+ahead of the event, and the picked questions go into the normal create flow.
+
+**The challenge (why it works):** the agents are grounded in your company's written
+record — wikis, tickets, chat, call transcripts, dashboards. If you're a remote-first,
+written-first company, that's _everything you do_ — so you're challenging the room to
+beat the agents at their home game. The winning space is questions that are **true and
+verifiable, but written down nowhere**: what happened in the room, tacit in-jokes, the
+thing everyone knows but nobody documented.
+
+**The playbook:**
+
+1. **A few days out, post the ask** in your all-hands channel. Template:
+
+   > 🧠🤖 **Quiz round two — this time we fight back.** Last time the agents won.
+   > This round, _you_ write the questions and we beat them together.
+   > The catch: we're a remote-first, written-first company — the agents have read
+   > everything we've ever written (Confluence, Jira, Slack, Gong, the dashboards).
+   > A question that's written down anywhere, they'll find. True, verifiable, but
+   > undocumented — that's the winning space.
+   > **Test your question against the full agent roster first at `<your-app>/test`**
+   > — it tells you how many agents you stumped. Send me your best by Thursday;
+   > I'll pick the top five. If your question makes the cut, you sit that one out
+   > (your name goes on screen instead).
+
+2. **Contributors self-test on `/test`** (sign-in required — same MCP OAuth as the
+   host console; each tester's lookups run under their own credentials). Iterating
+   until "stumped 6 of 8" is the pre-event game.
+3. **Curate by evidence, not hope:** favour submissions that stumped most of the
+   roster, verify each answer is actually correct yourself, and set the **author**
+   field on each question — the credit on the big screen is what enforces the
+   sit-out (no code needed, the room polices it).
+4. **On the night, the double game does the rest:** the Carbon-vs-Silicon tug-of-war
+   (per-capita team averages) is the headline battle, and **Top Human** is a real
+   title on the podium — so individuals compete with each other while the species
+   compete for the wall.
+
 ## Scale
 
 - **Verified PoC: ≤ 150 concurrent players** — 150 distributed players answered with
