@@ -39,38 +39,65 @@ export function rowCells(r: GridRow): string[] {
   );
 }
 
+/** Inverse of `rowCells` — restores a row from stored draft cells (§S7.6). */
+export function rowFromCells(cells: string[]): GridRow {
+  const cell = (i: number) => cells[i] ?? '';
+  return {
+    question: cell(0),
+    correct: cell(1),
+    wrong1: cell(2),
+    wrong2: cell(3),
+    wrong3: cell(4),
+    limit: cell(5),
+    category: cell(6),
+    author: cell(7),
+  };
+}
+
 export function isRowEmpty(r: GridRow): boolean {
   return rowCells(r).every((c) => c.trim() === '');
 }
 
-const columns = [
-  { ...keyColumn<GridRow, 'question'>('question', textColumn), title: 'Question', grow: 3 },
-  { ...keyColumn<GridRow, 'correct'>('correct', textColumn), title: 'Correct answer', grow: 1.4 },
-  { ...keyColumn<GridRow, 'wrong1'>('wrong1', textColumn), title: 'Wrong 1' },
-  { ...keyColumn<GridRow, 'wrong2'>('wrong2', textColumn), title: 'Wrong 2' },
-  { ...keyColumn<GridRow, 'wrong3'>('wrong3', textColumn), title: 'Wrong 3' },
-  { ...keyColumn<GridRow, 'limit'>('limit', textColumn), title: 'Time (s)', grow: 0.5 },
-  { ...keyColumn<GridRow, 'category'>('category', textColumn), title: 'Category' },
-  { ...keyColumn<GridRow, 'author'>('author', textColumn), title: 'Author' },
-];
+/** Column set; `disabled` builds the read-only variant a played quiz shows (§S7.6). */
+function buildColumns(disabled: boolean) {
+  return [
+    { ...keyColumn<GridRow, 'question'>('question', textColumn), title: 'Question', grow: 3 },
+    { ...keyColumn<GridRow, 'correct'>('correct', textColumn), title: 'Correct answer', grow: 1.4 },
+    { ...keyColumn<GridRow, 'wrong1'>('wrong1', textColumn), title: 'Wrong 1' },
+    { ...keyColumn<GridRow, 'wrong2'>('wrong2', textColumn), title: 'Wrong 2' },
+    { ...keyColumn<GridRow, 'wrong3'>('wrong3', textColumn), title: 'Wrong 3' },
+    { ...keyColumn<GridRow, 'limit'>('limit', textColumn), title: 'Time (s)', grow: 0.5 },
+    { ...keyColumn<GridRow, 'category'>('category', textColumn), title: 'Category' },
+    { ...keyColumn<GridRow, 'author'>('author', textColumn), title: 'Author' },
+  ].map((c) => ({ ...c, disabled }));
+}
+
+const columns = buildColumns(false);
+const readOnlyColumns = buildColumns(true);
 
 export function QuestionGrid({
   rows,
   onChange,
   badRows,
+  readOnly = false,
 }: {
   rows: GridRow[];
   onChange: (rows: GridRow[]) => void;
   badRows: Set<number>;
+  /** Played quizzes are immutable — show the questions, refuse the edits. */
+  readOnly?: boolean;
 }) {
   return (
     <div className="dsg-dark">
       <DataSheetGrid<GridRow>
         value={rows}
         onChange={onChange}
-        columns={columns}
+        columns={readOnly ? readOnlyColumns : columns}
         createRow={emptyRow}
         rowClassName={({ rowIndex }) => (badRows.has(rowIndex) ? 'dsg-bad-row' : undefined)}
+        lockRows={readOnly}
+        disableContextMenu={readOnly}
+        {...(readOnly ? { addRowsComponent: false as const } : {})}
       />
     </div>
   );

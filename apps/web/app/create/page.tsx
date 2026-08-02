@@ -11,20 +11,41 @@ import {
   type QuestionDef,
   type QuizConfig,
 } from '@ably-quiz/core';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrandMark } from '@/components/BrandMark';
 import {
   emptyRow,
   isRowEmpty,
   QuestionGrid,
   rowCells,
+  rowFromCells,
   type GridRow,
 } from '@/components/QuestionGrid';
-import { saveQuiz, type StoredQuiz } from '@/lib/quiz-storage';
+import {
+  draftFromQuiz,
+  duplicateQuiz,
+  launchQuiz,
+  loadDraft,
+  loadQuiz,
+  newDraftId,
+  saveDraft,
+  type StoredDraft,
+  type StoredQuiz,
+} from '@/lib/quiz-storage';
 import { generateQuizId } from '@/lib/slug';
 
 const START_ROWS = 3;
+
+/** How long the grid must be quiet before the draft is written (§S7.6). */
+const AUTOSAVE_MS = 1000;
+
+/** What this page is editing: an unlaunched draft, or a played quiz (read-only —
+ *  its questions have already been broadcast and scored, so it can only be
+ *  duplicated). `null` while the URL is still being read. */
+type Editing =
+  { kind: 'draft'; draftId: string } | { kind: 'played'; quizId: string; quiz: StoredQuiz };
 
 // Dev-only convenience: a handful of ready-made questions so manual testing on
 // localhost doesn't require typing a quiz every time (see the "load samples" link).
@@ -126,9 +147,22 @@ function validate(
   return { questions, errors, badRows };
 }
 
+/** Stored cells → grid rows, with one blank row to carry on typing in. */
+function rowsFromCells(cells: string[][]): GridRow[] {
+  return [...cells.map(rowFromCells), emptyRow()];
+}
+
+/** Trailing blanks are editor scaffolding, not content — don't persist them. */
+function contentCells(rows: GridRow[]): string[][] {
+  const trimmed = [...rows];
+  while (trimmed.length > 0 && isRowEmpty(trimmed[trimmed.length - 1]!)) trimmed.pop();
+  return trimmed.map(rowCells);
+}
+
 export default function CreatePage() {
   const router = useRouter();
   const [rows, setRows] = useState<GridRow[]>(() => Array.from({ length: START_ROWS }, emptyRow));
+  const [name, setName] = useState('');
   const [defaultLimitS, setDefaultLimitS] = useState(LIMIT_DEFAULT_S);
   const [algoId, setAlgoId] = useState(DEFAULT_ALGO_ID);
   const [streakEnabled, setStreakEnabled] = useState(false);
@@ -155,19 +189,107 @@ export default function CreatePage() {
     };
   }, []);
 
+  // Quiz memory (§S7.6). `editing` stays null until the URL has been read, so
+  // the autosave can't fire with an empty grid and clobber the stored draft.
+  const [editing, setEditing] = useState<Editing | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const createdAt = useRef(Date.now());
+  const readOnly = editing?.kind === 'played';
+
+  const applyDraft = useCallback((draft: StoredDraft, trailingRow = true) => {
+    createdAt.current = draft.createdAt;
+    setRows(trailingRow ? rowsFromCells(draft.cells) : draft.cells.map(rowFromCells));
+    setName(draft.name ?? '');
+    setDefaultLimitS(draft.settings.defaultLimitS);
+    setAlgoId(draft.settings.scoringAlgoId);
+    setStreakEnabled(draft.settings.streakEnabled);
+    setAutoReveal(draft.settings.autoReveal);
+    setExcluded(new Set(draft.settings.excludedAgents));
+  }, []);
+
+  // ?draft=<id> resumes an unlaunched quiz; ?quiz=<id> opens a played one
+  // read-only. Neither present (or not found) ⇒ a fresh draft.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const quizId = params.get('quiz');
+    const draftId = params.get('draft');
+    if (quizId) {
+      const quiz = loadQuiz(quizId);
+      if (quiz) {
+        // Reuse the quiz→cells conversion for display; keep the real name (the
+        // duplicate helper is what appends "(copy)").
+        const view = draftFromQuiz(quiz, quizId);
+        applyDraft({ ...view, name: quiz.name ?? '' }, false);
+        setEditing({ kind: 'played', quizId, quiz });
+        return;
+      }
+    }
+    if (draftId) {
+      const draft = loadDraft(draftId);
+      if (draft) {
+        applyDraft(draft);
+        setEditing({ kind: 'draft', draftId });
+        return;
+      }
+    }
+    setEditing({ kind: 'draft', draftId: newDraftId() });
+  }, [applyDraft]);
+
+  // Auto-save the draft ~1s after typing stops, so a crash or a stray back
+  // button costs nothing. Played quizzes are immutable — never saved over.
+  useEffect(() => {
+    if (!editing || editing.kind !== 'draft') return;
+    const cells = contentCells(rows);
+    const quizName = name.trim();
+    if (cells.length === 0 && !quizName) return; // nothing worth remembering yet
+    const { draftId } = editing;
+    const settings = {
+      defaultLimitS,
+      scoringAlgoId: algoId,
+      streakEnabled,
+      autoReveal,
+      excludedAgents: [...excluded],
+    };
+    const timer = setTimeout(() => {
+      saveDraft({
+        draftId,
+        createdAt: createdAt.current,
+        updatedAt: Date.now(),
+        ...(quizName ? { name: quizName } : {}),
+        cells,
+        settings,
+      });
+      setSavedAt(Date.now());
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [editing, rows, name, defaultLimitS, algoId, streakEnabled, autoReveal, excluded]);
+
   const { questions, errors, badRows } = useMemo(
     () => validate(rows, defaultLimitS),
     [rows, defaultLimitS],
   );
   const algos = useMemo(() => listAlgos(), []);
-  const canCreate = questions.length > 0;
+  const canCreate = questions.length > 0 && !readOnly;
+
+  /** A played quiz can't be edited — copy it into a fresh draft instead (§S7.6). */
+  function handleDuplicate() {
+    if (!editing || editing.kind !== 'played') return;
+    const draftId = duplicateQuiz(editing.quizId);
+    const draft = draftId ? loadDraft(draftId) : null;
+    if (!draftId || !draft) return;
+    applyDraft(draft);
+    setEditing({ kind: 'draft', draftId });
+    // Same page, new identity — replace the URL so a refresh resumes the copy.
+    router.replace(`/create?draft=${draftId}`);
+  }
 
   function handleCreate() {
     if (!canCreate) return;
     const quizId = generateQuizId();
+    const quizName = name.trim();
     const agents: AgentRosterEntry[] = available
       .filter((a) => !excluded.has(a.slug))
-      .map(({ slug, name, emoji, owner, model }) => ({ slug, name, emoji, owner, model }));
+      .map((a) => ({ slug: a.slug, name: a.name, emoji: a.emoji, owner: a.owner, model: a.model }));
     const config: QuizConfig = {
       scoringAlgoId: algoId,
       questionCount: questions.length,
@@ -176,29 +298,73 @@ export default function CreatePage() {
       autoReveal,
       ...(agents.length > 0 ? { agents } : {}),
     };
-    const quiz: StoredQuiz = { quizId, createdAt: Date.now(), questions, config };
-    saveQuiz(quiz);
+    const quiz: StoredQuiz = {
+      quizId,
+      createdAt: Date.now(),
+      questions,
+      config,
+      ...(quizName ? { name: quizName } : {}),
+    };
+    // Launch turns the draft into a played (immutable) record — the definition
+    // is stored once, under the quiz id, for /host to pick up (§S7.6).
+    launchQuiz(quiz, editing?.kind === 'draft' ? editing.draftId : undefined);
     // Straight into the host control room — it carries the share QR + big-screen
     // link now, so there's no separate "quiz ready" hop (§S5.2).
     router.push(`/host?quiz=${quizId}`);
+  }
+
+  // Hold the page back for the one tick it takes to read the URL: the grid must
+  // mount already knowing whether it's editable, and a draft must not flash an
+  // empty grid before it's restored.
+  if (!editing) {
+    return (
+      <main className="mx-auto max-w-5xl px-6 py-12">
+        <BrandMark className="mb-4" />
+        <p className="text-neutral-500">Loading…</p>
+      </main>
+    );
   }
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-8">
         <BrandMark className="mb-4" />
-        <h1 className="text-4xl font-extrabold tracking-tight">Create a quiz</h1>
+        <h1 className="text-4xl font-extrabold tracking-tight">
+          {readOnly ? 'Quiz already played' : 'Create a quiz'}
+        </h1>
         <p className="mt-2 text-neutral-400">
-          Type your questions, or copy a block straight out of a spreadsheet and paste it into the
-          grid.
+          {readOnly
+            ? 'Played quizzes are locked so the questions always match the results. Duplicate it to make an editable copy.'
+            : 'Type your questions, or copy a block straight out of a spreadsheet and paste it into the grid.'}
         </p>
       </header>
+
+      {editing.kind === 'played' && (
+        <PlayedBanner quiz={editing.quiz} onDuplicate={handleDuplicate} />
+      )}
+
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <label htmlFor="quizName" className="text-sm font-semibold text-neutral-300">
+          Quiz name
+        </label>
+        <input
+          id="quizName"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          disabled={readOnly}
+          placeholder="optional — e.g. “Company offsite, round two”"
+          className="min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-ink placeholder:text-neutral-600 outline-none focus:border-ably disabled:opacity-60"
+        />
+        {!readOnly && savedAt !== null && (
+          <span className="text-xs text-neutral-600">draft saved</span>
+        )}
+      </div>
 
       <section className="mb-8">
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-baseline gap-3">
             <h2 className="text-sm font-semibold text-neutral-300">Questions</h2>
-            {devLike && (
+            {devLike && !readOnly && (
               <button
                 type="button"
                 onClick={() => setRows([...SAMPLE_ROWS.map((r) => ({ ...r })), emptyRow()])}
@@ -213,7 +379,16 @@ export default function CreatePage() {
             {questions.length} valid{errors.length > 0 ? ` · ${errors.length} to fix` : ''}
           </span>
         </div>
-        <QuestionGrid rows={rows} onChange={setRows} badRows={badRows} />
+        {/* Keyed on the quiz being edited: react-datasheet-grid caches its
+            columns, so switching between the editable and read-only sets (e.g.
+            duplicating a played quiz in place) needs a fresh mount. */}
+        <QuestionGrid
+          key={editing.kind === 'played' ? editing.quizId : editing.draftId}
+          rows={rows}
+          onChange={setRows}
+          badRows={badRows}
+          readOnly={readOnly}
+        />
         {errors.length > 0 && (
           <ul className="mt-3 space-y-1 rounded-lg border border-red-900/60 bg-red-950/30 p-3 text-sm text-red-300">
             {errors.map((e, i) => (
@@ -238,7 +413,8 @@ export default function CreatePage() {
                   : LIMIT_DEFAULT_S,
               );
             }}
-            className="w-16 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-center text-ink outline-none focus:border-ably"
+            disabled={readOnly}
+            className="w-16 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 text-center text-ink outline-none focus:border-ably disabled:opacity-60"
           />
           <span>seconds</span>
         </div>
@@ -253,7 +429,7 @@ export default function CreatePage() {
         </p>
       </section>
 
-      <fieldset className="mb-8">
+      <fieldset className="mb-8" disabled={readOnly}>
         <legend className="text-sm font-semibold text-neutral-300">Scoring</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           {algos.map((a) => (
@@ -319,7 +495,7 @@ export default function CreatePage() {
         </details>
       </fieldset>
 
-      {available.length > 0 && (
+      {!readOnly && available.length > 0 && (
         <fieldset className="mb-8">
           <legend className="text-sm font-semibold text-neutral-300">
             Agents{' '}
@@ -369,14 +545,50 @@ export default function CreatePage() {
         </fieldset>
       )}
 
-      <button
-        type="button"
-        onClick={handleCreate}
-        disabled={!canCreate}
-        className="rounded-lg bg-ably px-6 py-3 font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        Create quiz
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={!canCreate}
+          className="rounded-lg bg-ably px-6 py-3 font-semibold text-black transition disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Create quiz
+        </button>
+      )}
     </main>
+  );
+}
+
+/** Header for a played quiz: it's a record, not a form. Duplicate to reuse it,
+ *  or jump back to the control room (results rebuild from Ably history). */
+function PlayedBanner({ quiz, onDuplicate }: { quiz: StoredQuiz; onDuplicate: () => void }) {
+  const quizId = quiz.quizId;
+  const agents = quiz.config.agents?.length ?? 0;
+  return (
+    <section className="mb-8 flex flex-wrap items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3 text-sm">
+      <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs font-semibold text-neutral-300">
+        played
+      </span>
+      <span className="font-mono text-neutral-400">{quizId}</span>
+      <span className="text-neutral-500">
+        {quiz.questions.length} questions
+        {agents > 0 ? ` · ${agents} agents` : ''}
+      </span>
+      <div className="ml-auto flex flex-wrap items-center gap-3">
+        <Link
+          href={`/host?quiz=${quizId}`}
+          className="rounded-lg border border-neutral-700 px-4 py-2 font-semibold text-ink transition hover:border-neutral-500"
+        >
+          Open host controls
+        </Link>
+        <button
+          type="button"
+          onClick={onDuplicate}
+          className="rounded-lg bg-ably px-4 py-2 font-semibold text-black transition hover:brightness-110"
+        >
+          Duplicate to edit
+        </button>
+      </div>
+    </section>
   );
 }

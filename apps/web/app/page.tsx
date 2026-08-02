@@ -7,6 +7,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { MyQuizzes } from '@/components/MyQuizzes';
 
 /** Staggered page-load reveal, reusing the podium-rise keyframe. */
 const rise = (delay: number) => ({ animation: `podium-rise 0.5s ease-out ${delay}s both` });
@@ -69,6 +70,9 @@ export default function LandingPage() {
           🎯 Test your questions against the agents
         </Link>
       </div>
+
+      {/* Quiz memory (§S7.6) — only appears once this browser has made one. */}
+      <MyQuizzes />
     </main>
   );
 }
