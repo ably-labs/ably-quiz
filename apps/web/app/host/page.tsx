@@ -16,6 +16,7 @@ import {
   Scoreboard,
   TallyBars,
   TeamMark,
+  TugOfWar,
 } from '@/components/quiz';
 import { useAbly } from '@/hooks/useAbly';
 import { useAgentHealth, type HealthState } from '@/hooks/useAgentHealth';
@@ -167,6 +168,14 @@ export default function HostPage() {
             {revealed && <span className="text-emerald-400">revealed</span>}
           </div>
         </section>
+      )}
+
+      {/* Compact read on the team battle — per-capita Carbon vs Silicon (§S7.3).
+          Moves at reveal, never mid-question. */}
+      {state.questionIdx >= 0 && Object.keys(live.scoreboard).length > 0 && (
+        <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-900/40 px-4 py-3">
+          <TugOfWar scoreboard={live.scoreboard} compact />
+        </div>
       )}
 
       <div className="mb-8 flex flex-wrap gap-3">

@@ -4,7 +4,7 @@
 // scoring and the end-of-quiz counterfactual recompute share ONE code path —
 // recompute(log) must equal the live totals under the same algorithm.
 
-import type { AnswerLogEntry } from './protocol';
+import type { AnswerLogEntry, ScoreboardEntry } from './protocol';
 
 export type ScoreInput = {
   correct: boolean;
@@ -156,6 +156,67 @@ export function recomputeStandings(
 /** Rank by score desc, then cumulative time asc (faster breaks ties, e.g. `steady`). */
 export function rankStandings(standings: Standing[]): Standing[] {
   return [...standings].sort((a, b) => b.score - a.score || a.totalTimeMs - b.totalTimeMs);
+}
+
+// --- The double game (§S7.3) ------------------------------------------------
+// Two competitions run at once, so nobody's night is "I lost to a robot":
+// Carbon vs Silicon as TEAMS, and the best human as a title of its own. Both are
+// derived from the scoreboard that's already on the wire — no new state to
+// publish, and (since the scoreboard's scores only move at reveal, §S7.1) they
+// can't twitch mid-question either.
+
+export type TeamStanding = {
+  /** Members who have answered at least one question — the per-capita divisor. */
+  players: number;
+  total: number;
+  /** Points per player: the only fair comparison when 8 agents face a room. */
+  average: number;
+};
+
+export type TeamBattle = {
+  carbon: TeamStanding;
+  silicon: TeamStanding;
+  /** Side ahead on average; null when tied or nobody has answered yet. */
+  leader: 'carbon' | 'silicon' | null;
+};
+
+/**
+ * Per-capita Carbon (human) vs Silicon (agent) standings from the scoreboard.
+ * An entry only exists once its owner has answered a question, so membership
+ * already means "has played" — a lurker can't dilute their side's average.
+ */
+export function teamBattle(scoreboard: Record<string, ScoreboardEntry>): TeamBattle {
+  const carbon: TeamStanding = { players: 0, total: 0, average: 0 };
+  const silicon: TeamStanding = { players: 0, total: 0, average: 0 };
+  for (const entry of Object.values(scoreboard)) {
+    const side = entry.kind === 'agent' ? silicon : carbon;
+    side.players += 1;
+    side.total += entry.score;
+  }
+  for (const side of [carbon, silicon]) {
+    side.average = side.players === 0 ? 0 : side.total / side.players;
+  }
+  const leader =
+    carbon.average === silicon.average
+      ? null
+      : carbon.average > silicon.average
+        ? 'carbon'
+        : 'silicon';
+  return { carbon, silicon, leader };
+}
+
+export type RankedPlayer = ScoreboardEntry & { clientId: string };
+
+/** The best human — a first-class title, because the agents may sweep the top
+ *  three (§S7.3). Ties go to whoever the scoreboard lists first, matching the
+ *  podium's own stable sort. Null when no human has answered anything. */
+export function topHuman(scoreboard: Record<string, ScoreboardEntry>): RankedPlayer | null {
+  let best: RankedPlayer | null = null;
+  for (const [clientId, entry] of Object.entries(scoreboard)) {
+    if (entry.kind !== 'human') continue;
+    if (!best || entry.score > best.score) best = { clientId, ...entry };
+  }
+  return best;
 }
 
 /** Ranked standings under EVERY algorithm — the analysis-phase payload (§B2.6). */

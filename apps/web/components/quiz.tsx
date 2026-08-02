@@ -1,13 +1,15 @@
 'use client';
 
-import type {
-  AgentRosterEntry,
-  AgentToolCall,
-  AgentTranscript,
-  Choice,
-  CounterfactualPayload,
-  ScoreboardEntry,
-  Tallies,
+import {
+  teamBattle,
+  topHuman,
+  type AgentRosterEntry,
+  type AgentToolCall,
+  type AgentTranscript,
+  type Choice,
+  type CounterfactualPayload,
+  type ScoreboardEntry,
+  type Tallies,
 } from '@ably-quiz/core';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AgentThinkState } from '@/hooks/useAgentThinking';
@@ -593,30 +595,126 @@ export function CommentaryCard({
   );
 }
 
-/** Persistent Humans ⚡ Agents tug-of-war bar (§B2.10). */
-export function TugOfWar({ scoreboard }: { scoreboard: Record<string, ScoreboardEntry> }) {
-  const totals = { human: 0, agent: 0 };
-  for (const e of Object.values(scoreboard)) totals[e.kind] += e.score;
-  const sum = totals.human + totals.agent;
-  const humanPct = sum === 0 ? 50 : (totals.human / sum) * 100;
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-sm font-semibold">
+/** The Carbon ⚡ Silicon team battle (§B2.10, §S7.3). Scored PER CAPITA — with
+ *  eight agents against a room of humans, raw totals say nothing — over everyone
+ *  who has answered at least once. Derived from the scoreboard, whose scores only
+ *  move at reveal (§S7.1), so this never twitches mid-question. */
+export function TugOfWar({
+  scoreboard,
+  compact = false,
+}: {
+  scoreboard: Record<string, ScoreboardEntry>;
+  /** One quiet row for the host console instead of the full projector block. */
+  compact?: boolean;
+}) {
+  const { carbon, silicon, leader } = teamBattle(scoreboard);
+  const sum = carbon.average + silicon.average;
+  const carbonPct = sum === 0 ? 50 : (carbon.average / sum) * 100;
+  const avg = (n: number) => Math.round(n).toLocaleString();
+  const gap = Math.round(Math.abs(carbon.average - silicon.average));
+  const verdict =
+    sum === 0
+      ? 'no scores yet'
+      : leader === null
+        ? 'dead heat'
+        : `${leader === 'carbon' ? 'Carbon' : 'Silicon'} ahead by ${gap.toLocaleString()}`;
+  const bar = (
+    <div className={`flex ${compact ? 'h-2' : 'h-4'} flex-1 overflow-hidden rounded-full`}>
+      <div
+        className="bg-sky-500 transition-[width] duration-500"
+        style={{ width: `${carbonPct}%` }}
+      />
+      <div className="flex-1 bg-ably transition-[width] duration-500" />
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-3 text-sm">
         <span className="flex items-center gap-1.5 text-sky-400">
           <TeamMark team="carbon" className="h-5 w-5" />
-          Humans {totals.human}
+          <span className="font-semibold tabular-nums">{avg(carbon.average)}</span>
         </span>
+        {bar}
         <span className="flex items-center gap-1.5 text-ably">
-          {totals.agent} Agents
+          <span className="font-semibold tabular-nums">{avg(silicon.average)}</span>
           <TeamMark team="silicon" className="h-5 w-5" />
         </span>
+        <span className="shrink-0 text-xs text-neutral-500">avg / player · {verdict}</span>
       </div>
-      <div className="flex h-4 overflow-hidden rounded-full">
-        <div
-          className="bg-sky-500 transition-[width] duration-500"
-          style={{ width: `${humanPct}%` }}
-        />
-        <div className="flex-1 bg-ably transition-[width] duration-500" />
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-4">
+        <span className="flex items-center gap-2 text-sky-400">
+          <TeamMark team="carbon" className="h-6 w-6" />
+          <span className="text-sm font-semibold">Carbon</span>
+          <span className="text-xl font-bold tabular-nums">{avg(carbon.average)}</span>
+        </span>
+        <span className="shrink-0 text-[0.65rem] tracking-[0.2em] text-neutral-500 uppercase">
+          avg pts per player
+        </span>
+        <span className="flex items-center gap-2 text-ably">
+          <span className="text-xl font-bold tabular-nums">{avg(silicon.average)}</span>
+          <span className="text-sm font-semibold">Silicon</span>
+          <TeamMark team="silicon" className="h-6 w-6" />
+        </span>
+      </div>
+      <div className="flex">{bar}</div>
+      <div className="mt-1 flex items-center justify-between gap-4 text-xs text-neutral-500">
+        <span>
+          {carbon.players} human{carbon.players === 1 ? '' : 's'} playing
+        </span>
+        <span className="font-semibold text-neutral-300">{verdict}</span>
+        <span>
+          {silicon.players} agent{silicon.players === 1 ? '' : 's'} playing
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** "Top Human 🧠" — the second competition (§S7.3). The agents can sweep the
+ *  top three, so the best human is a title in its own right, not a consolation:
+ *  shown alongside the podium with their overall rank. */
+export function TopHumanCard({
+  scoreboard,
+  agents = [],
+  highlightId,
+}: {
+  scoreboard: Record<string, ScoreboardEntry>;
+  agents?: AgentRosterEntry[];
+  /** The viewer's own clientId — turns the card into "that's you" (player view). */
+  highlightId?: string;
+}) {
+  const best = topHuman(scoreboard);
+  if (!best) return null;
+  const rank =
+    Object.entries(scoreboard)
+      .sort((a, b) => b[1].score - a[1].score)
+      .findIndex(([clientId]) => clientId === best.clientId) + 1;
+  const mine = best.clientId === highlightId;
+  return (
+    <div className="mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-sky-900/60 bg-sky-950/20 px-5 py-3">
+      <span className="text-2xl" aria-hidden>
+        🧠
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[0.65rem] tracking-[0.25em] text-sky-400 uppercase">
+          {mine ? 'you are the top human' : 'top human'}
+        </p>
+        <p className="truncate font-bold">
+          <span className="mr-1.5" aria-hidden>
+            {identityEmoji(best.clientId, agents)}
+          </span>
+          {best.name}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="font-bold tabular-nums">{best.score}</p>
+        {rank > 0 && <p className="text-xs text-neutral-500">#{rank} overall</p>}
       </div>
     </div>
   );
@@ -822,6 +920,9 @@ export function Podium({
         )}
       </div>
 
+      {/* The second title, given the same stage as the podium (§S7.3). */}
+      <TopHumanCard scoreboard={scoreboard} agents={agents} />
+
       {interlude}
 
       {ranked.length > 3 && (
@@ -864,10 +965,20 @@ export function MiniPodium({
     { entry: bronze, medal: '🥉', delay: '0.3s', lift: '' },
   ];
   const subtitle = gold!.kind === 'agent' ? '🏆 Silicon takes it' : '🏆 Carbon takes it';
+  // The other title (§S7.3): the agents may own the podium, but the best human
+  // still wins something — and if that's the viewer, tell them so.
+  const best = topHuman(scoreboard);
 
   return (
     <div className="space-y-3">
       <p className="text-center text-sm font-semibold text-neutral-300">{subtitle}</p>
+      {best && (
+        <p className="text-center text-sm text-sky-400">
+          {best.clientId === highlightId
+            ? '🧠 You were the top human!'
+            : `🧠 Top human: ${best.name}`}
+        </p>
+      )}
       <div className="flex items-end justify-center gap-2">
         {columns.map((col, i) =>
           col.entry ? (

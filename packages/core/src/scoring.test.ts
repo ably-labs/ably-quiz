@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AnswerLogEntry } from './protocol';
+import type { AnswerLogEntry, ScoreboardEntry } from './protocol';
 import {
   counterfactual,
   getAlgo,
@@ -7,6 +7,8 @@ import {
   recomputeStandings,
   scoreQuestion,
   SCORING_ALGOS,
+  teamBattle,
+  topHuman,
   type LimitLookup,
 } from './scoring';
 
@@ -162,5 +164,62 @@ describe('counterfactual', () => {
     const cf = counterfactual(log, limitOf, false);
     expect(cf['fastest-finger']![0]!.clientId).toBe('a:fable'); // one blazing-fast correct
     expect(cf['steady']![0]!.clientId).toBe('p:priya'); // two correct beats one
+  });
+});
+
+describe('the double game — teams + best human (§S7.3)', () => {
+  const board = (entries: [string, 'human' | 'agent', number][]): Record<string, ScoreboardEntry> =>
+    Object.fromEntries(
+      entries.map(([clientId, kind, score]) => [
+        clientId,
+        { name: clientId.slice(2), kind, score, streak: 0, answered: false },
+      ]),
+    );
+
+  it('scores the teams per capita, so eight agents cannot out-total a small room', () => {
+    // Silicon wins on raw total (4800 vs 2400) but loses per player (600 vs 1200).
+    const scoreboard = board([
+      ['p:priya', 'human', 1400],
+      ['p:sam', 'human', 1000],
+      ...Array.from(
+        { length: 8 },
+        (_, i) => [`a:agent-${i}`, 'agent', 600] as [string, 'agent', number],
+      ),
+    ]);
+    const { carbon, silicon, leader } = teamBattle(scoreboard);
+    expect(carbon).toEqual({ players: 2, total: 2400, average: 1200 });
+    expect(silicon).toEqual({ players: 8, total: 4800, average: 600 });
+    expect(leader).toBe('carbon');
+  });
+
+  it('counts only players who have answered, and reports a tie / empty board as no leader', () => {
+    // The scoreboard only gains an entry once its owner answers, so a lurking
+    // human is simply absent — they can't drag their side's average down.
+    expect(teamBattle({}).leader).toBeNull();
+    expect(teamBattle({}).carbon).toEqual({ players: 0, total: 0, average: 0 });
+    const tied = teamBattle(
+      board([
+        ['p:priya', 'human', 500],
+        ['a:opus', 'agent', 500],
+      ]),
+    );
+    expect(tied.leader).toBeNull();
+    expect(tied.carbon.average).toBe(tied.silicon.average);
+  });
+
+  it('crowns the top human even when the agents sweep the podium', () => {
+    const scoreboard = board([
+      ['a:opus', 'agent', 3000],
+      ['a:fable', 'agent', 2800],
+      ['a:grok', 'agent', 2600],
+      ['p:priya', 'human', 2000],
+      ['p:sam', 'human', 1900],
+    ]);
+    expect(topHuman(scoreboard)).toMatchObject({ clientId: 'p:priya', score: 2000 });
+  });
+
+  it('has no top human until a human has answered', () => {
+    expect(topHuman({})).toBeNull();
+    expect(topHuman(board([['a:opus', 'agent', 3000]]))).toBeNull();
   });
 });

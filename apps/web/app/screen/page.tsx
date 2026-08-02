@@ -118,13 +118,14 @@ export default function ScreenPage() {
             tallies={view.tallies}
             showCounts={view.phase === 'locked'}
           />
+          {/* No team bar while a question is open — the race in play is "who has
+              answered", and scores don't move until reveal anyway (§S7.1/§S7.3). */}
           <AnsweredProgress
             agents={view.config?.agents ?? []}
             thinking={thinking}
             scoreboard={view.scoreboard}
             humansPresent={members.filter((m) => m.kind === 'human').length}
           />
-          <TugOfWar scoreboard={view.scoreboard} />
           <AgentStatusStrip agents={view.config?.agents ?? []} thinking={thinking} />
         </section>
       )}
@@ -134,16 +135,14 @@ export default function ScreenPage() {
           <QuizProgress current={q.idx + 1} total={view.config?.questionCount ?? 0} />
           <QuestionCard prompt={q.prompt} author={q.author} />
           <TallyBars options={q.options} tallies={view.tallies} correct={view.correct} />
-          <div className="grid gap-8 sm:grid-cols-2">
-            <div>
-              <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">
-                Scoreboard
-              </h3>
-              <Scoreboard scoreboard={view.scoreboard} agents={view.config?.agents} />
-            </div>
-            <div className="self-start">
-              <TugOfWar scoreboard={view.scoreboard} />
-            </div>
+          {/* Between questions the team battle leads: per-capita Carbon vs
+              Silicon, the competition nobody can lose alone (§S7.3). */}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/40 p-5">
+            <TugOfWar scoreboard={view.scoreboard} />
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">Scoreboard</h3>
+            <Scoreboard scoreboard={view.scoreboard} agents={view.config?.agents} />
           </div>
           <AgentQuipWall
             agents={view.config?.agents ?? []}
