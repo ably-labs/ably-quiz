@@ -132,7 +132,7 @@ export default function HostPage() {
         <section className="mb-6 space-y-5 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-6">
           <div className="flex items-start justify-between gap-6">
             <div className="flex-1">
-              <QuestionCard prompt={question.prompt} />
+              <QuestionCard prompt={question.prompt} author={question.author} />
             </div>
             {(asking || locked) && (
               <div className="shrink-0">

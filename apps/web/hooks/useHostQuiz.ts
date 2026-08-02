@@ -207,6 +207,7 @@ export function useHostQuiz(
         prompt: m.prompt,
         options: m.options,
         limitMs: m.limitMs,
+        author: m.author,
         startedAt: msg.timestamp ?? Date.now(),
       });
     };
@@ -258,6 +259,7 @@ export function useHostQuiz(
                 prompt: qm2.prompt,
                 options: qm2.options,
                 limitMs: qm2.limitMs,
+                author: qm2.author,
                 startedAt: c.serverTs,
               });
             break;

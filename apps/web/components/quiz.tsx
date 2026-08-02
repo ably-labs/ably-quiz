@@ -642,13 +642,24 @@ export function QuizProgress({ current, total }: { current: number; total: numbe
   );
 }
 
-export function QuestionCard({ prompt, category }: { prompt: string; category?: string }) {
+export function QuestionCard({
+  prompt,
+  category,
+  author,
+}: {
+  prompt: string;
+  category?: string;
+  /** Who submitted the question (§S7.2) — credited quietly under the prompt.
+   *  They're expected to sit this one out; nothing enforces that in code. */
+  author?: string;
+}) {
   return (
     <div className="text-center">
       {category && (
         <p className="mb-2 text-sm tracking-widest text-neutral-500 uppercase">{category}</p>
       )}
       <h2 className="text-3xl font-bold sm:text-4xl">{prompt}</h2>
+      {author && <p className="mt-2 text-sm text-neutral-500 italic">submitted by {author}</p>}
     </div>
   );
 }

@@ -108,7 +108,7 @@ export default function ScreenPage() {
         <section className="space-y-8">
           <QuizProgress current={q.idx + 1} total={view.config?.questionCount ?? 0} />
           <div className="flex flex-col items-center gap-6">
-            <QuestionCard prompt={q.prompt} />
+            <QuestionCard prompt={q.prompt} author={q.author} />
             <Countdown startedAt={q.startedAt} limitMs={q.limitMs} />
           </div>
           {/* Counts stay hidden until the question locks — the room used to read
@@ -132,7 +132,7 @@ export default function ScreenPage() {
       {revealed && (
         <section className="space-y-8">
           <QuizProgress current={q.idx + 1} total={view.config?.questionCount ?? 0} />
-          <QuestionCard prompt={q.prompt} />
+          <QuestionCard prompt={q.prompt} author={q.author} />
           <TallyBars options={q.options} tallies={view.tallies} correct={view.correct} />
           <div className="grid gap-8 sm:grid-cols-2">
             <div>

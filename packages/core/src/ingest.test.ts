@@ -16,6 +16,17 @@ describe('parseQuestions', () => {
     });
   });
 
+  it('reads the optional author column and omits it when blank (§S7.2)', () => {
+    const rows = [
+      'Who wrote this one?\tPriya\tSam\tAlex\t\t\tPeople\tPriya',
+      'Nobody claimed this one\tA\tB\t\t\t\tGeneral\t',
+    ].join('\n');
+    const { questions, errors } = parseQuestions(rows);
+    expect(errors).toEqual([]);
+    expect(questions[0]?.author).toBe('Priya');
+    expect(questions[1]).not.toHaveProperty('author');
+  });
+
   it('parses CSV and handles quoted fields containing commas', () => {
     const csv = '"Which city, historically, was capital?","Rome","Milan","Turin"';
     const { questions, errors } = parseQuestions(csv);

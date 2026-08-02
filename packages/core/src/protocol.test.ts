@@ -189,6 +189,32 @@ describe('control message (discriminated union)', () => {
   });
 });
 
+describe('question author (§S7.2)', () => {
+  const base = { prompt: 'Q?', options: ['x', 'y'], correctIndex: 0, limitMs: 20_000 };
+
+  it('is optional, so quizzes authored before the field still parse', () => {
+    const q = questionDefSchema.safeParse(base);
+    expect(q.success && q.data.author).toBeUndefined();
+    const msg = parseControlMessage({ type: 'question', idx: 0, ...base });
+    expect(msg?.type).toBe('question');
+  });
+
+  it('trims the name and rides along on the question broadcast', () => {
+    expect(questionDefSchema.safeParse({ ...base, author: '  Priya  ' })).toMatchObject({
+      success: true,
+      data: { author: 'Priya' },
+    });
+    const msg = parseControlMessage({ type: 'question', idx: 2, ...base, author: 'Priya' });
+    expect(msg).toMatchObject({ type: 'question', author: 'Priya' });
+  });
+
+  it('rejects a blank or over-long name', () => {
+    expect(questionDefSchema.safeParse({ ...base, author: '   ' }).success).toBe(false);
+    expect(questionDefSchema.safeParse({ ...base, author: 'x'.repeat(41) }).success).toBe(false);
+    expect(questionDefSchema.safeParse({ ...base, author: 'x'.repeat(40) }).success).toBe(true);
+  });
+});
+
 describe('question definition', () => {
   it('requires 2–4 options and a correct index', () => {
     expect(

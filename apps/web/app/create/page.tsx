@@ -37,6 +37,7 @@ const SAMPLE_ROWS: GridRow[] = [
     wrong3: 'Go',
     limit: '',
     category: 'Science',
+    author: '',
   },
   {
     question: 'How many continents are there on Earth?',
@@ -46,6 +47,7 @@ const SAMPLE_ROWS: GridRow[] = [
     wrong3: 'Eight',
     limit: '',
     category: 'Geography',
+    author: 'Priya',
   },
   {
     question: 'Which Ably product is for multiplayer collaboration?',
@@ -55,6 +57,7 @@ const SAMPLE_ROWS: GridRow[] = [
     wrong3: 'LiveSync',
     limit: '',
     category: 'Ably',
+    author: '',
   },
   {
     question: 'What does “AIT” stand for at Ably?',
@@ -64,6 +67,7 @@ const SAMPLE_ROWS: GridRow[] = [
     wrong3: 'Adaptive Ingest',
     limit: '',
     category: 'Ably',
+    author: '',
   },
   {
     question: 'Which planet is the largest in our solar system?',
@@ -73,6 +77,7 @@ const SAMPLE_ROWS: GridRow[] = [
     wrong3: 'Earth',
     limit: '',
     category: 'Science',
+    author: '',
   },
 ];
 
@@ -238,11 +243,13 @@ export default function CreatePage() {
           <span>seconds</span>
         </div>
         <p className="mt-2 max-w-2xl text-sm text-neutral-500">
-          <span className="text-neutral-300">Time (s)</span> and{' '}
-          <span className="text-neutral-300">Category</span> are optional. Leave <b>Time</b> blank
-          to use the default above (or set {LIMIT_MIN_S}–{LIMIT_MAX_S}s on a row). <b>Category</b>{' '}
-          is a short label shown above the question on the big screen — e.g. “Science” — purely for
-          flavour.
+          <span className="text-neutral-300">Time (s)</span>,{' '}
+          <span className="text-neutral-300">Category</span> and{' '}
+          <span className="text-neutral-300">Author</span> are optional. Leave <b>Time</b> blank to
+          use the default above (or set {LIMIT_MIN_S}–{LIMIT_MAX_S}s on a row). <b>Category</b> is a
+          short label shown above the question on the big screen — e.g. “Science” — purely for
+          flavour. <b>Author</b> credits whoever submitted the question (“submitted by Priya”) —
+          they sit that one out, on their honour.
         </p>
       </section>
 

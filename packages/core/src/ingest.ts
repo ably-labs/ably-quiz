@@ -1,6 +1,7 @@
 // Question ingestion (§B2.8). Paste from the Google Sheets template → parse.
 // Auto-detects TSV (Sheets) or CSV, tolerates quoted fields, and validates.
-// Columns: question, correct, wrong1, wrong2, wrong3?, time_limit_s?, category?
+// Columns: question, correct, wrong1, wrong2, wrong3?, time_limit_s?, category?,
+//          author? (who submitted it — display credit only, §S7.2)
 //
 // Pure and tested; the create screen (S3.1) renders the preview + errors.
 
@@ -112,6 +113,7 @@ export function parseQuestions(input: string): ParsedQuestions {
       correctIndex: 0, // `correct` is first; options are shuffled at broadcast (§B2.8)
       limitMs: clampLimitMs(cells[5]),
       ...(cells[6] ? { category: cells[6] } : {}),
+      ...(cells[7] ? { author: cells[7] } : {}),
     };
     const parsed = questionDefSchema.safeParse(candidate);
     if (parsed.success) {

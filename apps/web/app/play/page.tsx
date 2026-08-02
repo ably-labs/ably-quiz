@@ -161,7 +161,7 @@ export default function PlayPage() {
 
       {(view.phase === 'asking' || view.phase === 'locked') && view.question && (
         <div className="space-y-6">
-          <QuestionCard prompt={view.question.prompt} />
+          <QuestionCard prompt={view.question.prompt} author={view.question.author} />
           {view.phase === 'asking' && (
             <Countdown startedAt={view.question.startedAt} limitMs={view.question.limitMs} />
           )}
@@ -187,7 +187,7 @@ export default function PlayPage() {
 
       {view.phase === 'revealed' && view.question && (
         <div className="space-y-5">
-          <QuestionCard prompt={view.question.prompt} />
+          <QuestionCard prompt={view.question.prompt} author={view.question.author} />
           <div className="text-center">
             {pick ? (
               pick.choice === view.correct ? (

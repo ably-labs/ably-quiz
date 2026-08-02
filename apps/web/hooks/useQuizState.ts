@@ -31,6 +31,8 @@ export type QuestionBroadcast = {
   prompt: string;
   options: string[];
   limitMs: number;
+  /** Who submitted this question, when the host recorded one (§S7.2). */
+  author?: string;
   /** Ably server timestamp of the question broadcast — the cosmetic-countdown anchor. */
   startedAt: number;
 };
@@ -87,6 +89,7 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
           prompt: m.prompt,
           options: m.options,
           limitMs: m.limitMs,
+          author: m.author,
           startedAt: msg.timestamp ?? Date.now(),
         });
         setCorrect(null);
@@ -153,6 +156,7 @@ export function useQuizState(conn: Connection | null, quizId: string): QuizView 
             prompt: msg.prompt,
             options: msg.options,
             limitMs: msg.limitMs,
+            author: msg.author,
             startedAt: serverTs,
           };
           c = null;

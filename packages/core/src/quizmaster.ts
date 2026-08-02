@@ -161,6 +161,7 @@ export class Quizmaster {
       options,
       limitMs: q.limitMs,
       ...(q.category ? { category: q.category } : {}),
+      ...(q.author ? { author: q.author } : {}),
     });
     this.t0ByIdx.set(idx, serverTs);
     this.deps.store.setPhase('asking', idx);

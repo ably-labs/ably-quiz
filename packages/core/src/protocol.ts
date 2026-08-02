@@ -26,12 +26,20 @@ export const kindSchema = z.enum(['human', 'agent']);
 // --- Question definitions ---------------------------------------------------
 // Host-side full quiz. Options are shuffled ONCE server-side at broadcast
 // (§B2.8); the correct answer is withheld from the broadcast entirely.
+
+/** Who submitted a question (§S7.2). Round two: colleagues send questions in
+ *  ahead of the event and the author sits that one out — socially enforced, so
+ *  this is display credit only, never an exclusion rule. Optional everywhere:
+ *  quizzes created before this field parse unchanged. */
+export const authorSchema = z.string().trim().min(1).max(40);
+
 export const questionDefSchema = z.object({
   prompt: z.string().min(1),
   options: z.array(z.string().min(1)).min(2).max(4),
   correctIndex: z.number().int().nonnegative(),
   limitMs: z.number().int().positive(),
   category: z.string().min(1).optional(),
+  author: authorSchema.optional(),
 });
 export type QuestionDef = z.infer<typeof questionDefSchema>;
 
@@ -48,6 +56,9 @@ export const controlMessageSchema = z.discriminatedUnion('type', [
     options: z.array(z.string().min(1)).min(2).max(4),
     limitMs: z.number().int().positive(),
     category: z.string().min(1).optional(),
+    /** Question submitter, shown as "submitted by …" (§S7.2). Safe to broadcast:
+     *  it credits a colleague, it says nothing about which option is correct. */
+    author: authorSchema.optional(),
   }),
   z.object({ type: z.literal('lock'), idx: z.number().int().nonnegative() }),
   z.object({

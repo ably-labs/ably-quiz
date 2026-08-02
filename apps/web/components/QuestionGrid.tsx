@@ -15,15 +15,26 @@ export type GridRow = {
   wrong3: string | null;
   limit: string | null;
   category: string | null;
+  /** Who submitted the question (§S7.2) — credited on screen; they sit it out. */
+  author: string | null;
 };
 
 export function emptyRow(): GridRow {
-  return { question: '', correct: '', wrong1: '', wrong2: '', wrong3: '', limit: '', category: '' };
+  return {
+    question: '',
+    correct: '',
+    wrong1: '',
+    wrong2: '',
+    wrong3: '',
+    limit: '',
+    category: '',
+    author: '',
+  };
 }
 
-/** The 7 columns in the fixed order the core parser expects (null → ''). */
+/** The 8 columns in the fixed order the core parser expects (null → ''). */
 export function rowCells(r: GridRow): string[] {
-  return [r.question, r.correct, r.wrong1, r.wrong2, r.wrong3, r.limit, r.category].map(
+  return [r.question, r.correct, r.wrong1, r.wrong2, r.wrong3, r.limit, r.category, r.author].map(
     (c) => c ?? '',
   );
 }
@@ -40,6 +51,7 @@ const columns = [
   { ...keyColumn<GridRow, 'wrong3'>('wrong3', textColumn), title: 'Wrong 3' },
   { ...keyColumn<GridRow, 'limit'>('limit', textColumn), title: 'Time (s)', grow: 0.5 },
   { ...keyColumn<GridRow, 'category'>('category', textColumn), title: 'Category' },
+  { ...keyColumn<GridRow, 'author'>('author', textColumn), title: 'Author' },
 ];
 
 export function QuestionGrid({
