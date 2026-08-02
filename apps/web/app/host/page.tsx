@@ -149,10 +149,13 @@ export default function HostPage() {
             </p>
           )}
 
+          {/* The quizmaster buffers the counts while the question is open (§S7.1),
+              so the host sees the options now and the distribution from `lock`. */}
           <TallyBars
             options={question.options}
             tallies={live.tallies}
             correct={revealed ? correct : null}
+            showCounts={!asking}
           />
 
           <div className="flex items-center justify-between text-sm">

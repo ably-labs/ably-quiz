@@ -9,6 +9,15 @@
 // server timestamps, enforces first-answer-wins + the window, scores each answer
 // live, keeps the raw answer log, and can rebuild its entire state from channel
 // history (recovery, §B2.3).
+//
+// ⚠️ Fairness — what may reach the wire WHILE a question is open (§S7.1). The
+// LiveObjects state this engine writes is player-readable, so anything derived
+// from a choice or its correctness is withheld until the question closes:
+//   · per-option tallies  → buffered in memory, flushed to the store at `lock`
+//   · score + streak      → published totals lag the live ones until `reveal`
+// Only the boolean `answered` flag moves during `asking` — it carries no choice
+// information and drives the "X of Y answered" readout. Without this, the early
+// tally distribution (agents answer in 2–12s) told the room what to copy.
 
 import { kindFromClientId } from './auth';
 import {
@@ -80,9 +89,16 @@ export class Quizmaster {
   private readonly answeredKeys = new Set<string>(); // `${clientId}#${idx}` — first-answer-wins
   private readonly scores = new Map<string, number>();
   private readonly streaks = new Map<string, number>();
+  // What the WIRE currently says (§S7.1). Live scoring runs ahead of these; they
+  // only catch up at `reveal`, so a mid-question score jump can never tell the
+  // room that a given player or agent just answered correctly.
+  private readonly publishedScores = new Map<string, number>();
+  private readonly publishedStreaks = new Map<string, number>();
   private readonly names = new Map<string, string>();
   private readonly log: AnswerLogEntry[] = [];
   private tally: Record<Choice, number> = { A: 0, B: 0, C: 0, D: 0 };
+  /** True once this question's tallies may be written to the store (from `lock`). */
+  private talliesReleased = false;
   private answeredThisQuestion = new Set<string>();
   // Answers that arrive before T₀ is captured (the publish-echo hasn't returned
   // yet) are held here per question and scored the moment T₀ lands — so a fast
@@ -161,6 +177,7 @@ export class Quizmaster {
     this.applyEvent({ type: 'lock' });
     await this.deps.broadcaster.publishControl({ type: 'lock', idx: this.sm.questionIdx });
     this.deps.store.setPhase('locked', this.sm.questionIdx);
+    this.flushTallies(); // answers are closed — the distribution is safe now (§S7.1)
   }
 
   async reveal(): Promise<void> {
@@ -170,6 +187,7 @@ export class Quizmaster {
     if (!correct) throw new Error(`no correct answer known for question ${idx}`);
     await this.deps.broadcaster.publishControl({ type: 'reveal', idx, correct });
     this.deps.store.setPhase('revealed', idx);
+    this.releaseScores(); // the answer is out — scores/streaks may move (§S7.1)
   }
 
   async podium(): Promise<void> {
@@ -232,10 +250,22 @@ export class Quizmaster {
       const iy = my?.idx ?? Number.MAX_SAFE_INTEGER;
       return ix - iy || x.serverTs - y.serverTs;
     });
+    // A question still in flight hasn't been revealed, so its points must not be
+    // republished (§S7.1). Snapshot the published totals at that boundary — the
+    // replay is idx-ordered, so everything before it is already revealed.
+    const inFlight = this.sm.phase === 'asking' || this.sm.phase === 'locked';
+    const releaseThrough = inFlight ? this.sm.questionIdx - 1 : Number.MAX_SAFE_INTEGER;
+    let snapshotted = false;
     for (const a of ordered) {
       const msg = parseAnswerMessage(a.data);
-      if (msg) this.record(a.clientId, msg.idx, msg.choice, a.serverTs, false);
+      if (!msg) continue;
+      if (!snapshotted && msg.idx > releaseThrough) {
+        this.snapshotPublished();
+        snapshotted = true;
+      }
+      this.record(a.clientId, msg.idx, msg.choice, a.serverTs, false);
     }
+    if (!snapshotted) this.snapshotPublished();
 
     // 3. Rebuild the current-question tally + republish state to the store.
     this.deps.store.setConfig(this.deps.config);
@@ -358,9 +388,11 @@ export class Quizmaster {
     this.log.push({ clientId, idx, choice, correct, elapsedMs });
 
     // Live tally + scoreboard updates (recovery rebuilds these in bulk afterwards).
+    // The tally only reaches the store once the question has locked, and the entry
+    // carries the PUBLISHED score/streak — mid-question, all it says is "answered".
     if (live) {
       this.tally[choice] += 1;
-      this.deps.store.setTally(choice, this.tally[choice]);
+      if (this.talliesReleased) this.deps.store.setTally(choice, this.tally[choice]);
       this.answeredThisQuestion.add(clientId);
       this.writeScoreboardEntry(clientId);
     }
@@ -370,10 +402,40 @@ export class Quizmaster {
     this.deps.store.setScoreboardEntry(clientId, {
       name: this.names.get(clientId) ?? clientId,
       kind: kindFromClientId(clientId),
-      score: this.scores.get(clientId) ?? 0,
-      streak: this.streaks.get(clientId) ?? 0,
+      score: this.publishedScores.get(clientId) ?? 0,
+      streak: this.publishedStreaks.get(clientId) ?? 0,
       answered: this.answeredThisQuestion.has(clientId),
     });
+  }
+
+  /** Push the buffered per-option counts to the store (§S7.1, at `lock`). */
+  private flushTallies(): void {
+    this.talliesReleased = true;
+    for (const choice of LETTERS) this.deps.store.setTally(choice, this.tally[choice]);
+  }
+
+  /** Catch the published scores/streaks up to the live ones and re-publish every
+   *  entry that moved (§S7.1, at `reveal`). */
+  private releaseScores(): void {
+    this.snapshotPublished((clientId) => this.writeScoreboardEntry(clientId));
+  }
+
+  /** Copy live scores/streaks into the published view, calling `onChange` for each
+   *  client whose wire-visible numbers actually moved. */
+  private snapshotPublished(onChange?: (clientId: string) => void): void {
+    for (const clientId of this.scores.keys()) {
+      const score = this.scores.get(clientId) ?? 0;
+      const streak = this.streaks.get(clientId) ?? 0;
+      if (
+        (this.publishedScores.get(clientId) ?? 0) === score &&
+        (this.publishedStreaks.get(clientId) ?? 0) === streak
+      ) {
+        continue;
+      }
+      this.publishedScores.set(clientId, score);
+      this.publishedStreaks.set(clientId, streak);
+      onChange?.(clientId);
+    }
   }
 
   private resetQuestionState(): void {
@@ -382,6 +444,7 @@ export class Quizmaster {
     this.answeredThisQuestion = new Set();
     for (const clientId of previouslyAnswered) this.writeScoreboardEntry(clientId);
     this.tally = { A: 0, B: 0, C: 0, D: 0 };
+    this.talliesReleased = false; // buffered again until this question locks (§S7.1)
     this.deps.store.resetTally();
   }
 
@@ -394,7 +457,12 @@ export class Quizmaster {
         this.answeredThisQuestion.add(e.clientId);
       }
     }
-    for (const choice of LETTERS) this.deps.store.setTally(choice, this.tally[choice]);
+    // A recovering host must not publish the counts of a question that's still
+    // open — a late joiner correctly reads zeroes mid-`asking` (§S7.1).
+    this.talliesReleased = this.sm.phase !== 'asking';
+    if (this.talliesReleased) {
+      for (const choice of LETTERS) this.deps.store.setTally(choice, this.tally[choice]);
+    }
   }
 
   private reset(): void {
@@ -405,8 +473,11 @@ export class Quizmaster {
     this.pendingByIdx.clear();
     this.scores.clear();
     this.streaks.clear();
+    this.publishedScores.clear();
+    this.publishedStreaks.clear();
     this.log.length = 0;
     this.tally = { A: 0, B: 0, C: 0, D: 0 };
+    this.talliesReleased = false;
     this.answeredThisQuestion = new Set();
   }
 }

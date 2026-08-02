@@ -111,7 +111,13 @@ export default function ScreenPage() {
             <QuestionCard prompt={q.prompt} />
             <Countdown startedAt={q.startedAt} limitMs={q.limitMs} />
           </div>
-          <TallyBars options={q.options} tallies={view.tallies} />
+          {/* Counts stay hidden until the question locks — the room used to read
+              the agents' consensus off these bars and copy it (§S7.1). */}
+          <TallyBars
+            options={q.options}
+            tallies={view.tallies}
+            showCounts={view.phase === 'locked'}
+          />
           <AnsweredProgress
             agents={view.config?.agents ?? []}
             thinking={thinking}

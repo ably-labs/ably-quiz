@@ -81,9 +81,11 @@ describe('quizmaster — question loop & scoring', () => {
     qm.ingest({ clientId: 'p:carol', data: { idx: 0, choice: 'A' }, serverTs: t0q0 + 30_000 }); // late → 0
     qm.ingest({ clientId: 'p:alice', data: { idx: 0, choice: 'B' }, serverTs: t0q0 + 3_000 }); // dupe → ignored
 
-    expect(store.tally).toEqual({ A: 2, B: 1, C: 0, D: 0 }); // alice+carol on A, bob on B; dupe not counted
+    expect(store.tally).toEqual({ A: 0, B: 0, C: 0, D: 0 }); // still open → nothing on the wire (§S7.1)
 
     await qm.lock();
+    // Locked: alice+carol on A, bob on B; the dupe isn't counted.
+    expect(store.tally).toEqual({ A: 2, B: 1, C: 0, D: 0 });
     await qm.reveal();
 
     await qm.askNext(); // Q1 (correct B)
@@ -276,8 +278,11 @@ describe('quizmaster — 300-answer burst (§B2 gate)', () => {
     }
 
     expect(qm.getAnswerLog()).toHaveLength(300);
+    expect(store.tally).toEqual({ A: 0, B: 0, C: 0, D: 0 }); // buffered while open (§S7.1)
+    expect(store.scoreboard.size).toBe(300); // everyone is flagged `answered`
+
+    await qm.lock();
     expect(store.tally).toEqual({ A: 200, B: 100, C: 0, D: 0 });
-    expect(store.scoreboard.size).toBe(300);
 
     const standings = qm.getStandings();
     expect(standings).toHaveLength(300);
@@ -359,8 +364,116 @@ describe('quizmaster — recovery from history (§B2.3)', () => {
     expect(Object.fromEntries(revived.store.scoreboard)).toEqual(
       Object.fromEntries(shuffled.store.scoreboard),
     );
-    // alice (correct via a→D) scored, bob (wrong) zero.
-    expect(revived.store.scoreboard.get('p:alice')!.score).toBeGreaterThan(0);
-    expect(revived.store.scoreboard.get('p:bob')!.score).toBe(0);
+    // The question is still open, so the WIRE carries no points for it (§S7.1):
+    // both entries read zero and say only "answered"…
+    expect(revived.store.scoreboard.get('p:alice')).toMatchObject({ score: 0, answered: true });
+    expect(revived.store.scoreboard.get('p:bob')).toMatchObject({ score: 0, answered: true });
+    // …while the recovered ENGINE has alice (correct via a→D) ahead of bob.
+    const scored = Object.fromEntries(revived.qm.getStandings().map((s) => [s.clientId, s.score]));
+    expect(scored['p:alice']).toBeGreaterThan(0);
+    expect(scored['p:bob']).toBe(0);
+  });
+});
+
+describe('quizmaster — mid-question answer leak (§S7.1)', () => {
+  it('holds tallies until lock and scores until reveal, so an open question leaks nothing', async () => {
+    const { qm, broadcaster, store } = makeQuizmaster();
+    qm.init();
+
+    await qm.askNext(); // Q0, correct 'A'
+    const t0q0 = broadcaster.control.at(-1)!.serverTs;
+    qm.ingest({ clientId: 'a:opus', data: { idx: 0, choice: 'A' }, serverTs: t0q0 + 2_000 });
+    qm.ingest({ clientId: 'a:grok', data: { idx: 0, choice: 'A' }, serverTs: t0q0 + 2_500 });
+    qm.ingest({ clientId: 'p:mimic', data: { idx: 0, choice: 'B' }, serverTs: t0q0 + 9_000 });
+
+    // ASKING — the exploit window. Nothing that hints at a choice or its
+    // correctness is on the wire: tallies are flat zero and every score is 0…
+    expect(store.tally).toEqual({ A: 0, B: 0, C: 0, D: 0 });
+    expect([...store.scoreboard.values()].map((e) => e.score)).toEqual([0, 0, 0]);
+    // …but "who has answered" still works (the AnsweredProgress readout).
+    expect([...store.scoreboard.values()].every((e) => e.answered)).toBe(true);
+
+    // LOCK — answers are closed, so the distribution is safe to show…
+    await qm.lock();
+    expect(store.tally).toEqual({ A: 2, B: 1, C: 0, D: 0 });
+    // …but scores still haven't moved: the answer isn't out yet.
+    expect([...store.scoreboard.values()].map((e) => e.score)).toEqual([0, 0, 0]);
+
+    // REVEAL — now the points land.
+    await qm.reveal();
+    expect(store.scoreboard.get('a:opus')!.score).toBeGreaterThan(0);
+    expect(store.scoreboard.get('a:grok')!.score).toBeGreaterThan(0);
+    expect(store.scoreboard.get('p:mimic')!.score).toBe(0); // wrong answer
+  });
+
+  it('publishes the PREVIOUS total while the next question is open (no live score jump)', async () => {
+    const { qm, broadcaster, store } = makeQuizmaster(QUESTIONS, {
+      ...CONFIG,
+      streakEnabled: true,
+    });
+    qm.init();
+
+    await qm.askNext(); // Q0, correct 'A'
+    const t0q0 = broadcaster.control.at(-1)!.serverTs;
+    qm.ingest({ clientId: 'p:alice', data: { idx: 0, choice: 'A' }, serverTs: t0q0 + 1_000 });
+    await qm.lock();
+    await qm.reveal();
+    const afterQ0 = { ...store.scoreboard.get('p:alice')! };
+    expect(afterQ0.score).toBeGreaterThan(0);
+    expect(afterQ0.streak).toBe(1);
+
+    await qm.askNext(); // Q1, correct 'B'
+    const t0q1 = broadcaster.control.at(-1)!.serverTs;
+    qm.ingest({ clientId: 'p:alice', data: { idx: 1, choice: 'B' }, serverTs: t0q1 + 1_000 });
+
+    // Correct again — but while Q1 is open the wire must still read her Q0 total
+    // and Q0 streak; a bump here would announce "alice got it right" (§S7.1).
+    expect(store.scoreboard.get('p:alice')).toMatchObject({
+      score: afterQ0.score,
+      streak: afterQ0.streak,
+      answered: true,
+    });
+
+    await qm.lock();
+    expect(store.scoreboard.get('p:alice')!.score).toBe(afterQ0.score); // still held
+    await qm.reveal();
+    expect(store.scoreboard.get('p:alice')!.score).toBeGreaterThan(afterQ0.score);
+    expect(store.scoreboard.get('p:alice')!.streak).toBe(2);
+  });
+
+  it('a host recovering mid-question republishes zeroed tallies and pre-question scores', async () => {
+    const { qm, broadcaster, store } = makeQuizmaster();
+    const fed: InboundAnswer[] = [];
+    const feed = (a: InboundAnswer) => {
+      fed.push(a);
+      qm.ingest(a);
+    };
+    qm.init();
+
+    await qm.askNext(); // Q0, correct 'A'
+    const t0q0 = broadcaster.control.at(-1)!.serverTs;
+    feed({ clientId: 'p:alice', data: { idx: 0, choice: 'A' }, serverTs: t0q0 + 1_000 });
+    await qm.lock();
+    await qm.reveal();
+    const afterQ0Score = store.scoreboard.get('p:alice')!.score;
+
+    await qm.askNext(); // Q1, correct 'B' — left open
+    const t0q1 = broadcaster.control.at(-1)!.serverTs;
+    feed({ clientId: 'p:alice', data: { idx: 1, choice: 'B' }, serverTs: t0q1 + 1_000 });
+
+    const revived = makeQuizmaster();
+    revived.qm.recover(broadcaster.control, fed);
+
+    // Q1 is still open, so neither its counts nor its points reach the wire on a
+    // rebuild — a refreshing host (or a late joiner) sees only Q0's revealed total.
+    expect(revived.store.tally).toEqual({ A: 0, B: 0, C: 0, D: 0 });
+    expect(revived.store.scoreboard.get('p:alice')).toMatchObject({
+      score: afterQ0Score,
+      answered: true,
+    });
+    // The engine itself has Q1 scored — only publication is deferred.
+    expect(revived.qm.getStandings().find((s) => s.clientId === 'p:alice')!.score).toBeGreaterThan(
+      afterQ0Score,
+    );
   });
 });

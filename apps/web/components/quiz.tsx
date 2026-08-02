@@ -118,17 +118,24 @@ export function Countdown({ startedAt, limitMs }: { startedAt: number; limitMs: 
   );
 }
 
+/** The four options, with how many picked each. While a question is OPEN the
+ *  quizmaster withholds the counts at the data layer (§S7.1) — pass
+ *  `showCounts={false}` there so this renders as a plain options list rather
+ *  than a row of honest-but-meaningless zeros. */
 export function TallyBars({
   options,
   tallies,
   correct,
   picked,
+  showCounts = true,
 }: {
   options: string[];
   tallies: Tallies;
   correct?: Choice | null;
   /** The viewer's own choice — rings that row and tags it "you" (player view). */
   picked?: Choice | null;
+  /** False while the question is open: options only, no counts, no bars (§S7.1). */
+  showCounts?: boolean;
 }) {
   const max = Math.max(1, ...LETTERS.map((l) => tallies[l]));
   return (
@@ -150,10 +157,12 @@ export function TallyBars({
                 isPicked ? 'ring-2 ring-white/70' : ''
               }`}
             >
-              <div
-                className={`h-full transition-[width] duration-300 ${isCorrect ? 'bg-emerald-600/70' : 'bg-neutral-600/60'}`}
-                style={{ width: `${(count / max) * 100}%` }}
-              />
+              {showCounts && (
+                <div
+                  className={`h-full transition-[width] duration-300 ${isCorrect ? 'bg-emerald-600/70' : 'bg-neutral-600/60'}`}
+                  style={{ width: `${(count / max) * 100}%` }}
+                />
+              )}
               <span className="absolute inset-0 flex items-center gap-2 px-3 text-sm">
                 {correct != null && (isCorrect ? '✓ ' : '✗ ')}
                 <span className="truncate">{opt}</span>
@@ -162,7 +171,9 @@ export function TallyBars({
                 )}
               </span>
             </div>
-            <span className="w-10 text-right tabular-nums text-neutral-400">{count}</span>
+            {showCounts && (
+              <span className="w-10 text-right tabular-nums text-neutral-400">{count}</span>
+            )}
           </div>
         );
       })}
