@@ -62,6 +62,12 @@ export default function LandingPage() {
           </button>
         </form>
         <p className="text-xs text-neutral-600">Joining? Your host shares a code or QR.</p>
+
+        {/* Round two: colleagues write their own questions, so give them a way to
+            try one against the roster before submitting it (§S7.4). */}
+        <Link href="/test" className="mt-2 text-xs text-neutral-500 underline hover:text-ably">
+          🎯 Test your questions against the agents
+        </Link>
       </div>
     </main>
   );
